@@ -11,10 +11,10 @@ Copy your project folder or zip to the EC2 instance:
 
 ```bash
 # Copy folder
-scp -i your-key.pem -r /path/to/your/project ec2-user@18.212.236.236:~/nms
+scp -i your-key.pem -r /path/to/your/project ec2-user@18.212.236.236:~/service_communication
 
 # Or copy zip
-scp -i your-key.pem /path/to/nms.zip ec2-user@18.212.236.236:~/
+scp -i your-key.pem /path/to/service_communication.zip ec2-user@18.212.236.236:~/
 ```
 
 Connect to the server:
@@ -22,8 +22,8 @@ Connect to the server:
 ```bash
 ssh -i your-key.pem ec2-user@18.212.236.236
 cd ~/
-unzip nms.zip   # Only if uploaded as zip
-cd nms
+unzip service_communication.zip   # Only if uploaded as zip
+cd service_communication
 ```
 
 > Replace `18.212.236.236` with your **private or public IP** depending on your environment.
@@ -62,8 +62,8 @@ docker-compose --version
 
 There are **two `.env` files**:
 
-1. **Backend `.env.prod.be`** → `nms/.env.prod.be`
-2. **Frontend `.env.prod.fe`** → `nms/frontend/.env.prod.fe`
+1. **Backend `.env.prod.be`** → `service_communication/.env.prod.be`
+2. **Frontend `.env.prod.fe`** → `service_communication/frontend/.env.prod.fe`
 
 ### Backend Example
 

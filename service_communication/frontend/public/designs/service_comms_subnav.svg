@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760">
+  <defs>
+    <style>
+      .title { font: 28px 'Segoe UI', sans-serif; fill: #1b6b3a; font-weight: 600; }
+      .body { font: 16px 'Segoe UI', sans-serif; fill: #365436; }
+      .chip { font: 15px 'Segoe UI', sans-serif; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="1400" height="760" fill="#f5fbf6" />
+  <rect x="60" y="60" width="1280" height="640" rx="36" fill="#ffffff" stroke="#d4e8d9" />
+  <text x="120" y="130" class="title">Sticky Sub-navigation &amp; Compact Panels</text>
+  <text x="120" y="165" class="body">Sub navigation pins to the top as you scroll, providing quick jumps into each block.</text>
+
+  <rect x="120" y="200" width="1120" height="64" rx="20" fill="#f3f9f4" stroke="#dfeee2" />
+  <g font-family="'Segoe UI', sans-serif" font-size="16" font-weight="600">
+    <rect x="140" y="214" width="150" height="36" rx="18" fill="#1b6b3a" />
+    <text x="165" y="238" fill="#ffffff">Overview</text>
+    <text x="320" y="238" fill="#355533">Teams</text>
+    <text x="450" y="238" fill="#355533">Create Incident</text>
+    <text x="630" y="238" fill="#355533">Active</text>
+    <text x="750" y="238" fill="#355533">Messaging</text>
+    <text x="900" y="238" fill="#355533">Lists</text>
+  </g>
+
+  <rect x="120" y="290" width="350" height="360" rx="24" fill="#ffffff" stroke="#dfeee2" />
+  <text x="150" y="330" class="chip" fill="#244325">Teams</text>
+  <text x="150" y="360" class="body">Picker and template reference remain on the left rail.</text>
+
+  <rect x="500" y="290" width="650" height="160" rx="24" fill="#ffffff" stroke="#dfeee2" />
+  <text x="530" y="330" class="chip" fill="#244325">Incident Form</text>
+  <text x="530" y="360" class="body">Two-column layout keeps incident creation above the fold.</text>
+  <text x="530" y="390" class="body">Inputs: INC ID • Subject • Regions • Next Communication.</text>
+
+  <rect x="500" y="470" width="650" height="180" rx="24" fill="#ffffff" stroke="#dfeee2" />
+  <text x="530" y="510" class="chip" fill="#244325">Messaging Hub</text>
+  <text x="530" y="540" class="body">Timeline, overrides, attachments and close-out all sit on a single card.</text>
+
+  <rect x="120" y="680" width="1030" height="0.5" fill="#dfeee2" />
+  <text x="120" y="710" class="body">Use the quick links to move between sections without extra scrolling.</text>
+</svg>

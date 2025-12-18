@@ -1,0 +1,28 @@
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    TeamViewSet,
+    DistributionListViewSet,
+    IncidentViewSet,
+    IncidentMessageViewSet,
+    TemplatesView,
+    DashboardSummaryView,
+    LoginView,
+    RefreshView,
+    SessionLoginView,
+)
+
+router = DefaultRouter()
+router.register(r"teams", TeamViewSet, basename="team")
+router.register(r"distribution-lists", DistributionListViewSet, basename="distribution-list")
+router.register(r"incidents", IncidentViewSet, basename="incident")
+router.register(r"messages", IncidentMessageViewSet, basename="incident-message")
+
+urlpatterns = [
+    path("auth/login/", LoginView.as_view(), name="api-login"),
+    path("auth/refresh/", RefreshView.as_view(), name="api-refresh"),
+    path("auth/session-login/", SessionLoginView.as_view(), name="session-login"),
+    path("templates/", TemplatesView.as_view(), name="templates"),
+    path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
+    path("", include(router.urls)),
+]
