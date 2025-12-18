@@ -1,0 +1,591 @@
+{% load static %}
+
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Network Operations</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.0/purify.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css"
+    integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous" />
+  <link rel="stylesheet" type="text/css" href="{% static 'css/ping.css' %}" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <!-- Left Logo -->
+      <a class="navbar-brand" href="{% url 'ping_operation' %}">
+        <img src="{% static 'images/logo_left.png' %}" alt="logo" />
+      </a>
+
+      <!-- Center Navigation Items -->
+      <div class="collapse navbar-collapse justify-content-center" id="navbarTogglerDemo01">
+        <!-- <ul class="navbar-nav">
+            <li class="nav-item active">
+              <a class="nav-link" href="{% url 'ping_operation' %}">Home</a>
+            </li>
+            <li class="nav-item" id="refresh-item">
+              <a class="nav-link" href="">Refresh</a>
+            </li>
+          </ul> -->
+          <h2 style="text-align: center; margin: 10px; color: #247e00; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 28px; font-weight: 600; letter-spacing: 1.5px; text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);">Network Operations</h2>
+      </div>
+
+      <!-- Right Logo -->
+
+      <a class="navbar-brand" href="{% url 'ping_operation' %}">
+        <img src="{% static 'images/nms_logo.png' %}" alt="logo" />
+      </a>
+
+      <div class="navbar-icon-container">
+        <a class="navbar-icon" href="javascript:void(0)" onclick="toggleDropdown()">
+          <img src="{% static 'images/icons8-settings-50.png' %}" alt="setting" />
+        </a>
+        <div id="dropdown" class="dropdown-menu">
+          <a class="navbar-icon" href="{% url 'active_users_dashboard' %}">
+            <img src="{% static 'images/icons8-user-48.png' %}" alt="users" />Users
+          </a>
+
+          <!-- About with Popup Trigger -->
+          <a class="navbar-icon" href="javascript:void(0)" onclick="showPopup()">
+            <img src="{% static 'images/icons8-about-50.png' %}" alt="about" />About
+          </a>
+          <a class="navbar-icon" href="{% url 'azure_logout' %}">
+            <img src="{% static 'images/icons8-logout-50.png' %}" alt="logout" />Logout
+          </a>
+
+       
+        </div>
+      </div>
+
+      <!-- Popup Modal -->
+      <div
+      id="popup"
+      class="popup-overlay"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        visibility: hidden;
+        opacity: 0;
+        transition: visibility 0.3s, opacity 0.3s;
+      "
+      >
+      <div
+        class="popup-content"
+        style="
+          background-color: #fff;
+          padding: 20px;
+          border-radius: 10px;
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+          width: 80%;
+          max-width: 700px;
+          max-height: 90vh;
+          overflow: auto;
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        "
+      >
+        <!-- Close Button -->
+        <span
+          class="close-btn"
+          onclick="closePopup()"
+          style="
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            cursor: pointer;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+          "
+        >
+          &times;
+        </span>
+        <!-- PDF Viewer -->
+        <br />
+        <h4>Project set up Steps</h4><br />
+        <embed
+          src="{% static 'files/nms_pdf.pdf' %}"
+          type="application/pdf"
+          style="width: 100%; height: 500px; border: none;"
+        />
+      </div>
+      </div>
+
+
+    </div>
+  </nav>
+
+  <div class="container col-12 mt-1">
+    <form id="inputForm" method="POST" action="{% url 'ping_operation' %}">
+      {% csrf_token %}
+      <div class="row">
+        <!-- Left Navigation Wrapper -->
+        <div class="col-md-3">
+
+          <div class="left-navigation" style="box-shadow: 5px 0 10px rgba(0, 0, 0, 0.1);">
+            <!-- SNMP Fields -->
+            <div id="snmp_fields" class="p-3 border rounded bg-light" style="display: none">
+              <h5 class="mb-3">Advanced SNMP Configuration</h5>
+
+              <label for="snmp_version" class="form-label">SNMP Version:</label>
+              <select class="form-select mb-3" name="snmp_version" id="snmp_version"
+                onchange="toggleSNMPVersionFields()">
+                <option value="2c" selected>Select version</option>
+                <option value="2c">v2c</option>
+                <option value="3">v3</option>
+              </select>
+
+              <!-- SNMPFORM Fields -->
+              <div id="v2cv3_1" style="display: none">
+                <label for="read_community_string" class="form-label">Read Community String:</label>
+                <input autocomplete="off" type="text" class="form-control mb-3" name="read_community_string"
+                  id="read_community_string" />
+              </div>
+
+              <div id="v3_1" style="display: none">
+                <label for="username" class="form-label">Username:</label>
+                <input autocomplete="off" type="text" class="form-control mb-3" name="username" id="username" />
+              </div>
+
+              <div id="v3_2" style="display: none">
+                <label for="password" class="form-label">Password:</label>
+                <input autocomplete="off" type="password" class="form-control mb-3" name="password" id="password" />
+              </div>
+
+              <div id="v3_3" style="display: none">
+                <label for="authentication_type" class="form-label">Authentication Type:</label>
+                <select class="form-select mb-3" name="authentication_type" id="authentication_type">
+                  <option value="None">None</option>
+                  <option value="MD5">MD5</option>
+                  <option value="SHA">SHA</option>
+                </select>
+              </div>
+
+              <div id="v3_4" style="display: none">
+                <label for="encryption_type" class="form-label">Encryption Type:</label>
+                <select class="form-select mb-3" name="encryption_type" id="encryption_type">
+                  <option value="None">None</option>
+                  <option value="AES">AES</option>
+                  <option value="DES">DES</option>
+                </select>
+              </div>
+
+              <div id="v3_5" style="display: none">
+                <label for="encryption_key" class="form-label">Encryption Key:</label>
+                <input autocomplete="off" type="text" class="form-control mb-3" name="encryption_key"
+                  id="encryption_key" />
+              </div>
+
+              <div id="v3_6" style="display: none">
+                <label for="snmp_command" class="form-label">SNMP Command:</label>
+                <select class="form-select mb-3" name="snmp_command" id="snmp_command">
+                  <option value="snmpwalk">SNMP Walk</option>
+                  <option value="snmpget">SNMP Get</option>
+                </select>
+              </div>
+
+              <div id="v2cv3_2" style="display: none">
+                <label for="oid" class="form-label">Numeric OID:</label>
+
+                <!-- Input Field -->
+                <input autocomplete="off" type="text" class="form-control mb-3" name="oid" id="oid"
+                  value="1.3.6.1.2.1.1.5" />
+
+                <!-- Dropdown Field -->
+                <select class="form-select mb-3" id="oid-select">
+                  <option value="">Select OID</option>
+                  <option value="1.3.6.1.2.1.1.5">1.3.6.1.2.1.1.5</option>
+                  <option value="1.3.6.1.2.1.1.1">1.3.6.1.2.1.1.1</option>
+                  <option value="1.3.6.1.2.1.1.3">1.3.6.1.2.1.1.3</option>
+                  <option value="1.3.6.1.2.1.1.4">1.3.6.1.2.1.1.4</option>
+                </select>
+              </div>
+
+              <div id="v3_7" style="display: none">
+                <label for="output_format" class="form-label">Output Format:</label>
+                <select class="form-control mb-3" name="output_format" id="output_format">
+                  <option value="default">Default</option>
+                  <option value="numeric">Numeric OIDs</option>
+                  <option value="certification">Certification Walk</option>
+                  <option value="hex">Hex String</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Checkboxes for Operations -->
+            <div class="form-group" id="form_elements" style="display: block;">
+              <label class="form-label active">Select Operations</label>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="selectAll" onclick="toggleSelectAll()" />
+                <label class="form-check-label active select_all" for="selectAll">Select All</label>
+              </div>
+              <div class="row mt-1">
+                <!-- First Row of Checkboxes -->
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input operation-checkbox" type="checkbox" id="enable_ping"
+                      name="enable_ping" value="1" />
+                    <label class="form-check-label" for="enable_ping">
+                      Ping
+                    </label>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input operation-checkbox" type="checkbox" id="verbose_ping"
+                      name="verbose_ping" value="1" />
+                    <label class="form-check-label" for="verbose_ping">
+                      Verbose Ping
+                    </label>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input operation-checkbox" type="checkbox" id="traceroute" name="traceroute"
+                      value="1" />
+                    <label class="form-check-label" for="traceroute">
+                      Traceroute
+                    </label>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input operation-checkbox" type="checkbox" id="dns_lookup" name="dns_lookup"
+                      value="1" />
+                    <label class="form-check-label" for="dns_lookup">
+                      DNS Lookup
+                    </label>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input operation-checkbox" type="checkbox" id="verbos_dns_lookup"
+                      name="verbos_dns_lookup" value="1" />
+                    <label class="form-check-label" for="verbos_dns_lookup">
+                      Verbose DNS Lookup
+                    </label>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input operation-checkbox" type="checkbox" id="mtr" name="mtr"
+                      value="1" />
+                    <label class="form-check-label" for="mtr">
+                      MTR
+                    </label>
+                  </div>
+                </div>
+
+
+              </div>
+
+              <div class="row">
+                <div class="col-md-4 mt-3">
+                  <div class="form-check">
+                    <input class="form-check-input operation-checkbox" type="checkbox" id="simple_snmp_walk" name="simple_snmp_walk"
+                      value="1" />
+                    <label class="form-check-label" for="simple_snmp_walk">Simple SNMP Walk</label>
+                  </div>
+                </div>
+                <!-- Second Row for SNMP Walk -->
+                <div class="col-md-4 mt-3">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="snmp_walk" name="snmp_walk" value="1"
+                      onclick="toggleSNMPFields()" />
+                    <label class="form-check-label" for="snmp_walk">Advanced SNMP Walk</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <!-- Left Navigation Wrapper -->
+
+        <!-- Network Operations Form -->
+        <div class="col-md-8">
+          <div>
+            <br>
+
+            <div class="card shadow-lg">
+              <div class="card-body" style="background-color: rgba(3, 44, 18, 0.842);">
+                <!-- Spinner Element -->
+                <div class="spinner-overlay" id="spinnerOverlay">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                </div>
+
+
+
+                <!-- Input for IP/Hostname -->
+                <div class="form-group" style="display: flex; align-items: center;">
+                  <div style="display: flex; gap: 15px; width: 100%;">
+                    <input autocomplete="off" type="text" class="form-control" id="ipAddress" name="start_ip_address"
+                        placeholder="Start IP address" style="flex: 1; min-width: 200px; padding: 10px; font-size: 16px;" />
+                    <!-- <input autocomplete="off" type="text" class="form-control" id="ipAddress1" name="end_ip_address"
+                        placeholder="End IP address" style="flex: 1; min-width: 200px; padding: 10px; font-size: 16px;" /> -->
+                </div>
+                
+                
+                  <button class="btn btn-primary" type="submit" style="
+                        background: linear-gradient(45deg, #3cff00, #57b300);
+                        color: #030000;
+                        font-size: 0.9rem;
+                        font-weight: bold;
+                        border: none;
+                        border-radius: 14px;
+                        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                        padding: 8px 16px;
+                        transition: transform 0.2s ease, box-shadow 0.2s ease;
+                      ">
+                    Submit
+                  </button>
+                  <button class="btn btn-primary" style="
+                    background: linear-gradient(45deg, #eb715c, #332e01);
+                    color: #fff;
+                    font-size: 0.9rem;
+                    font-weight: bold;
+                    border: none;
+                    border-radius: 14px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    padding: 8px 16px;
+                    width: auto;
+                    display: inline-block;
+                    margin-left:5px;
+                    transition:
+                      transform 0.2s ease,
+                      box-shadow 0.2s ease;
+                  " type="button" id="clearButton" onclick="clearForm()">
+                    Clear
+                  </button>
+                </div>
+
+
+
+
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Network Results -->
+          <div id="result_div">
+            <div>
+              <div>
+                {% if table %}
+                  <h5 class="card-title">Results</h5>
+          
+                  <!-- Email Input and Send Button -->
+                  <div class="d-flex mb-3">
+                    <input type="text" id="emailInput" class="form-control me-2" placeholder="Enter emails (comma separated)">
+                    <button class="btn btn-info" onclick="sendEmail()">Send Email</button>
+                  </div>
+                  <button class="btn btn-success" onclick="downloadTableAsCSV()">Download Table as CSV</button>
+          
+                  <table class="table table-bordered table-striped">
+                    <thead>
+                      <tr>
+                        <th>Operation</th>
+                        <th>Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in table.rows %}
+                      <tr>
+                        <td>{{ row.0 }}</td>
+                        <td>
+                          <div style="max-height: 200px; overflow-y: auto; font-family:monospace;">
+                            <pre>{{ row.1 }}</pre>
+                          </div>
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+
+      </div>
+    </form>
+  </div>
+
+
+
+  <!-- Bootstrap JS -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{% static 'js/ping.js' %}"></script>
+  <script>
+    const advancedSnmpCheckbox = document.getElementById("snmp_walk");
+    const formElementsDiv = document.getElementById("form_elements");
+
+    if (advancedSnmpCheckbox && formElementsDiv) {
+        advancedSnmpCheckbox.addEventListener("click", function () {
+            if (this.checked) {
+                formElementsDiv.style.display = "none";
+            } else {
+                formElementsDiv.style.display = "block";
+            }
+        });
+    };
+
+
+    function showPopup() {
+      var popup = document.getElementById("popup");
+      popup.style.visibility = "visible";
+      popup.style.opacity = "1";
+    }
+    
+    function closePopup() {
+      var popup = document.getElementById("popup");
+      popup.style.visibility = "hidden";
+      popup.style.opacity = "0";
+    }
+    
+
+  
+  </script>
+  <script>
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function sendEmail() {
+      // Get the email addresses from the input field
+      let emailInput = document.getElementById("emailInput").value;
+      let emailList = emailInput.split(',').map(email => email.trim()).filter(email => email !== "");
+  
+      if (emailList.length === 0) return; // Stop execution if no emails are provided
+  
+      // Get the table content to include in the email body
+      let table = document.querySelector("#result_div table tbody");
+      if (!table) return; // Stop execution if no table data is available
+  
+      let emailBody = "Results:\n\n";
+      const rows = [];
+      table.querySelectorAll("tr").forEach(row => {
+          let operation = row.cells[0].innerText;
+          let result = row.cells[1].innerText;
+          emailBody += `Operation: ${operation}\nResult: ${result}\n\n`;
+          rows.push({ operation, result });
+      });
+
+      const htmlRows = rows.map(row => `
+        <tr>
+          <td style="border:1px solid #d1d5db; padding:8px; font-weight:600;">${escapeHtml(row.operation)}</td>
+          <td style="border:1px solid #d1d5db; padding:8px;">
+            <pre style="margin:0; white-space:pre-wrap; font-family:SFMono-Regular,Menlo,monospace;">${escapeHtml(row.result)}</pre>
+          </td>
+        </tr>
+      `).join('');
+
+      const emailHtml = `
+        <div style="font-family:Arial,Helvetica,sans-serif; color:#0f172a;">
+          <h2 style="margin-bottom:12px;">Network Operations Results</h2>
+          <table style="border-collapse:collapse; width:100%; font-size:14px;">
+            <thead>
+              <tr>
+                <th style="border:1px solid #d1d5db; background:#0f172a; color:#ffffff; text-align:left; padding:8px;">Operation</th>
+                <th style="border:1px solid #d1d5db; background:#0f172a; color:#ffffff; text-align:left; padding:8px;">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${htmlRows}
+            </tbody>
+          </table>
+        </div>
+      `;
+  
+      // Send email via AJAX to Django view
+      fetch('send-email/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email_list: emailList, email_body: emailBody, email_html: emailHtml })
+      })
+      .then(response => response.json())
+      .then(data => {
+          if (!data.success) console.error("Error sending email.");
+      })
+      .catch(error => console.error('Error:', error));
+  }
+    
+  </script>
+  
+  <script>
+    function downloadTableAsCSV() {
+      // Get the table element
+      const table = document.querySelector('table');
+      
+      // Initialize an array to hold the CSV data
+      let csvContent = "";
+      
+      // Loop through each row in the table
+      table.querySelectorAll('tr').forEach(function(row, rowIndex) {
+        const rowData = [];
+        
+        // Loop through each cell in the row
+        row.querySelectorAll('td, th').forEach(function(cell) {
+          // Escape any commas and newlines in cell data
+          const cellText = cell.textContent.trim().replace(/,/g, '') || cell.innerText;
+          rowData.push(`"${cellText}"`);
+        });
+  
+        // Join row data with commas and add a newline at the end of each row
+        csvContent += rowData.join(',') + "\n";
+      });
+  
+      // Create a Blob object from the CSV data and generate a download link
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      
+      // Create a download link and trigger the download
+      link.href = URL.createObjectURL(blob);
+      link.download = 'network_operation_data.csv';
+      link.click();
+    }
+  </script>
+  
+
+    
+
+</body>
+
+</html>

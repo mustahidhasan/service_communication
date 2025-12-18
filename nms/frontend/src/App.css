@@ -1,0 +1,367 @@
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  padding: 2rem;
+  color: #f8fafc;
+}
+
+.login-panel {
+  background: #0f172a;
+  padding: 2.5rem;
+  border-radius: 1rem;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.4);
+}
+
+.login-panel h1 {
+  margin: 0 0 0.5rem;
+}
+
+.login-panel p {
+  margin-bottom: 1.5rem;
+  color: #cbd5f5;
+}
+
+.login-panel input {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  margin-bottom: 0.75rem;
+}
+
+.login-panel button {
+  padding: 0.8rem 1rem;
+  background: #22d3ee;
+  color: #0f172a;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.legacy-layout {
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.legacy-panel {
+  background: rgba(15, 23, 42, 0.85);
+  padding: 2rem;
+  border-radius: 1rem;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.75rem;
+}
+
+.legacy-panel button {
+  padding: 0.8rem 1rem;
+  width: 100%;
+  background: #4caf50;
+  border-radius: 0.5rem;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.legacy-panel small {
+  color: #cbd5f5;
+}
+
+.legacy-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 0.75rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  object-fit: contain;
+  background: white;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+  padding-bottom: 140px;
+  box-sizing: border-box;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  background: #0f172a;
+  color: white;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-actions button {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: white;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.user-meta {
+  text-align: right;
+}
+
+.alert {
+  margin: 1rem 2rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: #ffe4e6;
+  color: #9f1239;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+}
+
+.summary-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08);
+}
+
+.summary-value {
+  font-size: 2.5rem;
+  margin: 0;
+}
+
+.summary-card.recent ul {
+  margin: 0;
+  padding-left: 1rem;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  padding: 0 2rem 2rem;
+}
+
+.panel {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.panel.tall {
+  min-height: 520px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.template-hints ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+  color: #475569;
+}
+
+.template-hints li {
+  margin-bottom: 0.25rem;
+}
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.app-footer {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  margin: 0;
+  padding: 18px 32px;
+  text-align: center;
+  background: linear-gradient(
+      120deg,
+      rgba(20, 83, 45, 0.96),
+      rgba(15, 118, 110, 0.9),
+      rgba(14, 165, 233, 0.85)
+    ),
+    #0f172a;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.25);
+  z-index: 50;
+}
+
+.app-footer-text {
+  margin: 0;
+  color: #ecfdf5;
+  font-size: 1rem;
+  letter-spacing: 0.35px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.app-footer-text a {
+  color: #f0fdf4;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(255, 255, 255, 0.65);
+}
+
+.app-footer-text a:hover {
+  color: #cffafe;
+  text-decoration-color: #cffafe;
+}
+
+.form-grid input,
+.form-grid textarea,
+.form-grid select {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #cbd5f5;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.form-grid button {
+  padding: 0.85rem 1.2rem;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.incident-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.incident-list li {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: #f8fafc;
+}
+
+.incident-list li.active {
+  border-color: #2563eb;
+  background: #e0ecff;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  margin-left: 0.5rem;
+  text-transform: capitalize;
+  font-size: 0.75rem;
+}
+
+.status-pill.open {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-pill.monitoring {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.status-pill.closed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.timeline {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.timeline li {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 0.75rem;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.radio-group {
+  display: flex;
+  gap: 1rem;
+}
+
+.list-view {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.list-view li {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.4);
+  color: white;
+  font-size: 1.2rem;
+  z-index: 999;
+}

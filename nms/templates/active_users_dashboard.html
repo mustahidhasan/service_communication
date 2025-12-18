@@ -1,0 +1,128 @@
+{% load static %}
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Network Operations</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.0/purify.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <style>
+    .table-container {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+    }
+
+    .search-input {
+        margin-bottom: 10px;
+        width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container mt-5">
+    <div class="text-center">
+        <h1 class="mb-4">Active Users Dashboard</h1>
+        <p class="lead">Current Active Users: <strong>{{ active_user_count }}</strong></p>
+        <a href="{% url 'ping_operation' %}" class="btn btn-primary">Back To Home</a>
+        <button onclick="location.reload();" class="btn btn-secondary">Refresh</button>
+    </div>
+
+    <h2 class="mt-5 mb-3 text-center">Active Users Details</h2>
+  
+    <div class="row">
+        {% for user in active_users %}
+            <div class="col-md-4">
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">{{ user.first_name }} {{ user.last_name }}</h5>
+                        <p class="card-text"><strong>Email:</strong> {{ user.email }}</p>
+                        <p class="badge {% if user.is_active %} bg-success {% else %} bg-danger {% endif %}">
+                            {{ user.is_active|yesno:"Active,Inactive" }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+  
+    <!-- Table for User Activity below the cards -->
+    <h3 class="mt-5 text-center">User Activity Log</h3>
+    <div class="table-container mt-3">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th colspan="6">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <input style="width: 300px;" type="text" id="searchUser" class="form-control search-input" placeholder="Search by User Name...">
+                            <button class="btn btn-success" onclick="downloadCSV()">Download CSV</button>
+                        </div>
+                    </th>
+                    
+                    
+                </tr>
+                <tr>
+                    <th scope="col">User ID</th>
+                    <th scope="col">Username</th>
+                    <th scope="col">Last Activity Time</th>
+                    <th scope="col">Activity Type</th>
+                    <th scope="col">Session Duration</th>
+                </tr>
+            </thead>
+            <tbody id="user-activity-table">
+                {% for user_activity in user_activities %}
+                    <tr>
+                        <td>{{ user_activity.user.pk }}</td>
+                        <td>{{ user_activity.user }}</td>
+                        <td>{{ user_activity.timestamp|date:"D, d M Y H:i:s" }}</td>
+                        <td>{{ user_activity.activity_type }}</td>
+                        <td>{{ user_activity.formatted_duration|safe }}</td>
+                    </tr>
+                
+                
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+  </div>
+
+  <script>
+    function downloadCSV() {
+        const rows = document.querySelectorAll('#user-activity-table tr');
+        let csvContent = 'User ID,Username,Last Activity Time,Activity Type,Status,Session Duration\n';
+    
+        rows.forEach(row => {
+            const cols = row.querySelectorAll('td');
+            const rowData = Array.from(cols).map(col => col.textContent.trim()).join(',');
+    
+            // Skip empty rows
+            if (rowData.replace(/,/g, '').length > 0) {
+                csvContent += rowData + '\n';
+            }
+        });
+    
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'user_activity_log.csv';
+        link.click();
+    }    
+
+    document.getElementById('searchUser').addEventListener('keyup', function () {
+        const input = this.value.toLowerCase();
+        const rows = document.querySelectorAll('#user-activity-table tr');
+
+        rows.forEach(row => {
+            const userName = row.cells[1].textContent.toLowerCase();
+            row.style.display = userName.includes(input) ? '' : 'none';
+        });
+    });
+  </script>
+
+</body>
