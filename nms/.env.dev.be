@@ -3,7 +3,7 @@ HOST_URL=http://localhost:3000
 BACKEND_PORT=8000
 DJANGO_SECRET_KEY=dev-secret-key
 DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1,backend,backend-dev,nms-backend-dev
+ALLOWED_HOSTS=localhost,127.0.0.1,backend,backend-dev,service_communication-backend-dev
 
 # Azure SSO (replace with valid dev credentials)
 AZURE_TENANT_ID=20873f24-587c-427a-8b39-20b75349b61d

@@ -14,14 +14,7 @@ charset-normalizer==3.3.2
 idna==3.10
 jinja2==3.1.4
 MarkupSafe==2.1.5
-ply==3.11
-pyasn1==0.4.8
-pyasyncore==1.0.4
-pycryptodomex==3.21.0
-pysmi==1.5.0
-pysnmp==4.4.12
 requests==2.32.3
 sqlparse==0.5.1
 typing-extensions==4.12.2
 urllib3==2.2.3
-prettytable==3.11.0

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AppFooter from './AppFooter';
+import { AUTH_STORAGE_KEY } from '../constants/storage';
 import '../App.css';
 import '../assets/ServiceCommunications.css';
 
@@ -304,9 +305,9 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
   const persistAuth = useCallback(
     (nextAuth) => {
       if (nextAuth) {
-        localStorage.setItem('nmsAuth', JSON.stringify(nextAuth));
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuth));
       } else {
-        localStorage.removeItem('nmsAuth');
+        localStorage.removeItem(AUTH_STORAGE_KEY);
       }
       setAuth(nextAuth);
     },
@@ -357,7 +358,7 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
         }
         if (!response.ok || !data?.access) {
           persistAuth(null);
-          navigate('/dashboard');
+          navigate('/');
           throw new Error(data?.detail || 'Session expired. Please sign in again.');
         }
         const nextAuth = {
@@ -413,7 +414,7 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
             return execute(newAccess);
           }
           persistAuth(null);
-          navigate('/dashboard');
+          navigate('/');
         }
         throw err;
       }
@@ -423,9 +424,9 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
 
   const handleNavigateHome = useCallback(() => {
     setShowSettingsDropdown(false);
-    navigate('/dashboard');
+    navigate('/');
     if (typeof window !== 'undefined') {
-      window.location.assign('/dashboard');
+      window.location.assign('/');
     }
   }, [navigate]);
 
@@ -462,7 +463,7 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
 
   useEffect(() => {
     if (!token) {
-      navigate('/dashboard');
+      navigate('/');
       return;
     }
     const bootstrap = async () => {
@@ -2394,7 +2395,7 @@ const parseEntriesFromEmails = (rawInput) => {
     <div className="app-shell service-communications">
       <header className="app-header sc-header">
         <div className="sc-branding">
-          <img src="logo_left.png" alt="Network Operations" className="sc-logo" />
+          <img src="logo_left.png" alt="Service Communications" className="sc-logo" />
           <div>
             <h1>Service Communications</h1>
             <p>Structured incident and announcement workflows</p>

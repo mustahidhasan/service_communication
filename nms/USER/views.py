@@ -51,7 +51,7 @@ def azure_login(request):
 
 def azure_callback(request):
     code = request.GET.get('code')
-    next_url = request.GET.get('next', '/dashboard')
+    next_url = request.GET.get('next', '/')
 
     token_data = {
         'client_id': settings.AZURE_CLIENT_ID,
@@ -109,7 +109,7 @@ def azure_callback(request):
 
         if duplicate_session is not None:
             request.session[SESSION_ACTIVITY_KEY] = duplicate_session.id
-            safe_redirect = next_url if next_url.startswith('/') else '/dashboard'
+            safe_redirect = next_url if next_url.startswith('/') else '/'
             return redirect(f"{settings.FRONTEND_URL}{safe_redirect}")
 
         new_activity = UserActivity.objects.create(
@@ -119,7 +119,7 @@ def azure_callback(request):
         )
         request.session[SESSION_ACTIVITY_KEY] = new_activity.id
 
-        safe_redirect = next_url if next_url.startswith('/') else '/dashboard'
+        safe_redirect = next_url if next_url.startswith('/') else '/'
         return redirect(f"{settings.FRONTEND_URL}{safe_redirect}")
 
     except Exception as e:

@@ -5,7 +5,7 @@ services:
     build:
       context: ./
       dockerfile: Dockerfile
-    container_name: nms-backend-dev
+    container_name: service_communication-backend-dev
     command: python manage.py runserver 0.0.0.0:8000
     env_file:
       - .env.dev.be
@@ -23,7 +23,7 @@ services:
       target: dev
       args:
         ENV_FILE: .env.dev.fe
-    container_name: nms-frontend-dev
+    container_name: service_communication-frontend-dev
     env_file:
       - ./frontend/.env.dev.fe
     environment:
@@ -38,6 +38,6 @@ services:
 
   redis:
     image: redis:alpine
-    container_name: nms-redis-dev
+    container_name: service_communication-redis-dev
     ports:
       - "6379:6379"

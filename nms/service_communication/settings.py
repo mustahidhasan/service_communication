@@ -23,7 +23,6 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "USER",
-    "DASHBOARD",
     "communications",
 ]
 
@@ -41,12 +40,12 @@ MIDDLEWARE = [
 ]
 
 # URLs and templates
-ROOT_URLCONF = "nms.urls"
+ROOT_URLCONF = "service_communication.urls"
 
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [os.path.join(BASE_DIR, "templates")],
+        "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -59,7 +58,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "nms.wsgi.application"
+WSGI_APPLICATION = "service_communication.wsgi.application"
 
 # Database (SQLite for now)
 DATABASES = {
@@ -84,9 +83,9 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files
-STATIC_URL = '/static-django/'
+STATIC_URL = "/static-django/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")]
+STATICFILES_DIRS = []
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

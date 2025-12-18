@@ -21,4 +21,4 @@ COPY . .
 EXPOSE 8000
 
 # Run collectstatic at container start, then Gunicorn
-CMD ["sh", "-c", "python manage.py collectstatic --noinput && gunicorn nms.asgi:application --bind 0.0.0.0:8000 -k uvicorn.workers.UvicornWorker"]
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && gunicorn service_communication.asgi:application --bind 0.0.0.0:8000 -k uvicorn.workers.UvicornWorker"]

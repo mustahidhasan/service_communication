@@ -1,47 +1,87 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import AppFooter from './AppFooter';
+import { AUTH_STORAGE_KEY } from '../constants/storage';
 import '../assets/Login.css';
 
-function Login({ apiBaseUrl, legacyBaseUrl }) {
+const getCookie = (name) => {
+  if (!document?.cookie) return null;
+  const cookies = document.cookie.split(';');
+  for (let i = 0; i < cookies.length; i += 1) {
+    const cookie = cookies[i].trim();
+    if (cookie.startsWith(`${name}=`)) {
+      return decodeURIComponent(cookie.substring(name.length + 1));
+    }
+  }
+  return null;
+};
+
+function Login({ apiBaseUrl, auth, setAuth }) {
   const navigate = useNavigate();
-  const pollingRef = useRef(null);
   const insightsRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const bootstrapAttemptedRef = useRef(false);
 
   useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
+    if (auth?.access) {
+      navigate('/service-communications', { replace: true });
+    }
+  }, [auth, navigate]);
 
-  const startPollingLoginStatus = () => {
-    let attempts = 0;
-    const maxAttempts = 20;
-    pollingRef.current = setInterval(async () => {
-      attempts += 1;
-      try {
-        const res = await fetch(`${apiBaseUrl}/azure-login/status/`, {
-          credentials: 'include',
-        });
-        const data = await res.json();
-        if (data.success) {
-          clearInterval(pollingRef.current);
-          setLoading(false);
-          navigate('/diagnostics');
-        } else if (attempts >= maxAttempts) {
-          clearInterval(pollingRef.current);
-          setLoading(false);
-          alert('Login timed out. Please try again.');
-        }
-      } catch (err) {
-        clearInterval(pollingRef.current);
-        setLoading(false);
-        alert('Error checking login status.');
+  const performSessionLogin = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) {
+        setLoading(true);
       }
-    }, 1000);
-  };
+      try {
+        const csrfToken = getCookie('csrftoken');
+        const response = await fetch(`${apiBaseUrl}/auth/session-login/`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+          },
+          body: JSON.stringify({}),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(
+            data?.detail || 'Unable to open Service Communications. Please authenticate via SSO first.'
+          );
+        }
+        flushSync(() => {
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
+          if (typeof setAuth === 'function') {
+            setAuth(data);
+          }
+        });
+        navigate('/service-communications', { replace: true });
+        return true;
+      } catch (error) {
+        if (!silent) {
+          console.error('Service Communications error:', error);
+          alert(error.message || 'Failed to open Service Communications.');
+        }
+        return false;
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [apiBaseUrl, navigate, setAuth]
+  );
+
+  useEffect(() => {
+    if (auth?.access || bootstrapAttemptedRef.current) {
+      return;
+    }
+    bootstrapAttemptedRef.current = true;
+    performSessionLogin({ silent: true });
+  }, [auth, performSessionLogin]);
 
   const handleSSOLogin = async () => {
     setLoading(true);
@@ -55,15 +95,19 @@ function Login({ apiBaseUrl, legacyBaseUrl }) {
         window.location.href = data.login_url;
       } else if (data.success) {
         setLoading(false);
-        navigate('/diagnostics');
+        navigate('/service-communications');
       } else {
-        startPollingLoginStatus();
+        throw new Error('Unexpected response from the login service. Please retry.');
       }
     } catch (error) {
       console.error('Login error:', error);
       setLoading(false);
-      alert('Login failed.');
+      alert(error.message || 'Login failed.');
     }
+  };
+
+  const handleEnterWorkspace = () => {
+    performSessionLogin();
   };
 
   const toggleInsights = () => setShowInsights((prev) => !prev);
@@ -92,9 +136,9 @@ function Login({ apiBaseUrl, legacyBaseUrl }) {
       )}
       <div className="login-frame">
         <header className="login-header">
-          <img src="logo_left.png" className="logo-left" alt="Network logo" />
-          <div className="login-title">Network Management Operations</div>
-          <img src="logo_right.png" className="logo-right" alt="Operations logo" />
+          <img src="logo_left.png" className="logo-left" alt="Service Communications logo" />
+          <div className="login-title">Service Communication Portal</div>
+          <img src="logo_right.png" className="logo-right" alt="Service partner logo" />
           <button
             type="button"
             className={`insights-trigger ${showInsights ? 'active' : ''}`}
@@ -125,11 +169,16 @@ function Login({ apiBaseUrl, legacyBaseUrl }) {
         </header>
         <main className="login-box">
           <h1>Welcome back</h1>
-          <p className="login-subtitle">Securely access diagnostics, ping tools, and incident workflows.</p>
+          <p className="login-subtitle">Securely access incident communications and user activity insights.</p>
           <button type="button" onClick={handleSSOLogin} disabled={loading}>
             {loading ? 'Signing you in…' : 'Login via SSO'}
           </button>
-          <small className="login-hint">SSO is required. Reach out to the NMS team if you need access.</small>
+          <button className="secondary-login-action" type="button" onClick={handleEnterWorkspace} disabled={loading}>
+            {loading ? 'Loading workspace…' : 'Enter Service Communications'}
+          </button>
+          <small className="login-hint">
+            SSO is required. Reach out to the Service Communication admins if you need access.
+          </small>
         </main>
       </div>
       <AppFooter apiBaseUrl={apiBaseUrl} />

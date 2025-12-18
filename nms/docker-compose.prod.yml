@@ -22,14 +22,14 @@ services:
       target: prod
       args:
         ENV_FILE: .env.prod.fe
-    image: nms-frontend
+    image: service_communication-frontend
     container_name: frontend
     depends_on:
       - backend
     # no volumes needed; build is inside Docker
 
   nginx:
-    image: nms-frontend
+    image: service_communication-frontend
     container_name: nginx
     ports:
       - "80:80"
