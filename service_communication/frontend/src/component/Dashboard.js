@@ -447,12 +447,9 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
     [auth?.refresh, fetchWithToken, navigate, persistAuth, refreshAccessToken]
   );
 
-  const handleNavigateHome = useCallback(() => {
+  const handleViewUserActivity = useCallback(() => {
     setShowSettingsDropdown(false);
-    navigate('/');
-    if (typeof window !== 'undefined') {
-      window.location.assign('/');
-    }
+    navigate('/user-activity');
   }, [navigate]);
 
   const handleLogout = useCallback(async () => {
@@ -2331,8 +2328,8 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
                     <span>{profileDisplayName}</span>
                   </div>
                 </div>
-                <button type="button" onClick={handleNavigateHome}>
-                  🏠 Home
+                <button type="button" onClick={handleViewUserActivity}>
+                  👥 User Activity
                 </button>
                 <button type="button" onClick={handleLogout}>
                   ↩ Logout

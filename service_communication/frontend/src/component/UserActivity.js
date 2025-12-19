@@ -49,11 +49,7 @@ function UserActivity({ apiBaseUrl }) {
 
   return (
     <div className="user-activity-container">
-      <button
-        className="back-to-home-btn"
-        onClick={() => navigate('/service-communications')}
-        style={{ marginBottom: '20px', padding: '8px 16px', cursor: 'pointer' }}
-      >
+      <button className="back-to-home-btn" onClick={() => navigate('/service-communications')}>
         ← Back to Home
       </button>
 
