@@ -10,6 +10,7 @@ from .views import (
     LoginView,
     RefreshView,
     SessionLoginView,
+    DirectoryDistributionListView,
 )
 
 router = DefaultRouter()
@@ -24,5 +25,10 @@ urlpatterns = [
     path("auth/session-login/", SessionLoginView.as_view(), name="session-login"),
     path("templates/", TemplatesView.as_view(), name="templates"),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
+    path(
+        "directory/distribution-lists/",
+        DirectoryDistributionListView.as_view(),
+        name="directory-distribution-lists",
+    ),
     path("", include(router.urls)),
 ]

@@ -48,6 +48,10 @@ class TeamMembership(models.Model):
 
 
 class DistributionList(models.Model):
+    class Source(models.TextChoices):
+        CUSTOM = "custom", "Custom"
+        DIRECTORY = "directory", "Active Directory"
+
     team = models.ForeignKey(
         Team,
         on_delete=models.CASCADE,
@@ -57,6 +61,11 @@ class DistributionList(models.Model):
     )
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
+    source = models.CharField(
+        max_length=32, choices=Source.choices, default=Source.CUSTOM, db_index=True
+    )
+    external_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    email = models.EmailField(blank=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -74,9 +83,14 @@ class DistributionList(models.Model):
     def scope(self):
         return "global" if self.team is None else "team"
 
+    @property
+    def is_directory_managed(self):
+        return self.source == self.Source.DIRECTORY
+
     def __str__(self):
         prefix = "Global" if self.team is None else self.team.name
-        return f"{prefix}: {self.name}"
+        suffix = f" ({self.email})" if self.email else ""
+        return f"{prefix}: {self.name}{suffix}"
 
 
 class DistributionListEntry(models.Model):
@@ -198,12 +212,14 @@ class IncidentMessage(models.Model):
     next_communication_time = models.DateTimeField(null=True, blank=True)
     subject = models.CharField(max_length=200)
     body = models.TextField()
+    body_html = models.TextField(blank=True)
     template_type = models.CharField(
         max_length=20, choices=Incident.TemplateType.choices, default=Incident.TemplateType.INCIDENT
     )
     extra_recipients = models.JSONField(default=list, blank=True)
     sent_to = models.JSONField(default=list, blank=True)
     delivery_status = models.CharField(max_length=50, default="pending")
+    point_of_contact_email = models.EmailField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

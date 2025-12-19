@@ -22,6 +22,7 @@ from .models import (
 )
 from .constants import ANNOUNCEMENT_TEMPLATES
 from .permissions import user_can_manage_team
+from .services import build_incident_message_bodies
 
 User = get_user_model()
 
@@ -159,6 +160,7 @@ class DistributionListSerializer(serializers.ModelSerializer):
     created_by = serializers.IntegerField(source="created_by_id", read_only=True)
     created_by_name = serializers.SerializerMethodField()
     can_manage = serializers.SerializerMethodField()
+    is_directory_managed = serializers.SerializerMethodField()
 
     class Meta:
         model = DistributionList
@@ -167,6 +169,9 @@ class DistributionListSerializer(serializers.ModelSerializer):
             "team",
             "name",
             "description",
+            "source",
+            "external_id",
+            "email",
             "scope",
             "entries",
             "created_at",
@@ -174,21 +179,28 @@ class DistributionListSerializer(serializers.ModelSerializer):
             "created_by",
             "created_by_name",
             "can_manage",
+            "is_directory_managed",
         ]
         read_only_fields = [
             "id",
+            "source",
+            "external_id",
+            "email",
             "created_at",
             "updated_at",
             "scope",
             "created_by",
             "created_by_name",
             "can_manage",
+            "is_directory_managed",
         ]
 
     def create(self, validated_data):
         entries = validated_data.pop("entries", [])
         request = self.context.get("request")
         validated_data["created_by"] = request.user if request else None
+        if not validated_data.get("source"):
+            validated_data["source"] = DistributionList.Source.CUSTOM
         distribution_list = DistributionList.objects.create(**validated_data)
         for entry_data in entries:
             DistributionListEntry.objects.create(
@@ -199,6 +211,8 @@ class DistributionListSerializer(serializers.ModelSerializer):
         return distribution_list
 
     def update(self, instance, validated_data):
+        if instance.is_directory_managed:
+            raise serializers.ValidationError("Directory-managed lists cannot be modified.")
         entries = validated_data.pop("entries", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -215,6 +229,8 @@ class DistributionListSerializer(serializers.ModelSerializer):
         return instance
 
     def get_can_manage(self, obj):
+        if obj.is_directory_managed:
+            return False
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
@@ -235,6 +251,9 @@ class DistributionListSerializer(serializers.ModelSerializer):
         if full_name:
             return full_name
         return creator.email or getattr(creator, "username", None)
+
+    def get_is_directory_managed(self, obj):
+        return obj.is_directory_managed
 
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):
@@ -267,6 +286,10 @@ class IncidentSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request:
             validated_data["created_by"] = request.user
+        distribution_lists = validated_data.get("distribution_lists") or []
+        primary = validated_data.get("primary_distribution_list")
+        if not primary and distribution_lists:
+            validated_data["primary_distribution_list"] = distribution_lists[0]
         return super().create(validated_data)
 
     def validate_affected_regions(self, value):
@@ -383,10 +406,12 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
             "distribution_lists",
             "subject",
             "body",
+            "body_html",
             "template_type",
             "extra_recipients",
             "sent_to",
             "point_of_contact",
+            "point_of_contact_email",
             "problem_description",
             "workaround",
             "next_communication_time",
@@ -399,11 +424,17 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
             "incident_reference",
             "author",
             "author_name",
+            "body_html",
             "sent_to",
             "delivery_status",
             "created_at",
             "attachments",
         ]
+        extra_kwargs = {
+            "body": {"allow_blank": True, "required": False},
+            "point_of_contact": {"allow_blank": True, "required": False},
+            "point_of_contact_email": {"allow_blank": True, "required": False},
+        }
 
     def create(self, validated_data):
         request = self.context.get("request")
@@ -412,10 +443,14 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
         validated_data["author"] = request.user if request else None
         incident = validated_data["incident"]
         user = request.user if request else None
-        validated_data["point_of_contact"] = (
+        point_of_contact_name = (
             validated_data.get("point_of_contact")
             or (user.get_full_name() if user and user.get_full_name() else None)
             or (user.email if user else "")
+        )
+        validated_data["point_of_contact"] = point_of_contact_name
+        validated_data["point_of_contact_email"] = (
+            validated_data.get("point_of_contact_email") or (user.email if user else "")
         )
         validated_data["problem_description"] = (
             validated_data.get("problem_description")
@@ -426,6 +461,7 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
         validated_data["next_communication_time"] = (
             validated_data.get("next_communication_time") or incident.next_communication_time
         )
+        raw_body = validated_data.get("body", "")
         message = IncidentMessage.objects.create(**validated_data)
         for file in files:
             MessageAttachment.objects.create(
@@ -439,6 +475,16 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
             message.distribution_lists.set(incident.distribution_lists.all())
         elif message.distribution_list:
             message.distribution_lists.add(message.distribution_list)
+        text_body, html_body = build_incident_message_bodies(message, raw_body)
+        update_fields = []
+        if text_body:
+            message.body = text_body
+            update_fields.append("body")
+        if html_body is not None:
+            message.body_html = html_body
+            update_fields.append("body_html")
+        if update_fields:
+            message.save(update_fields=update_fields)
         return message
 
 class IncidentCloseSerializer(serializers.Serializer):
@@ -455,6 +501,7 @@ class IncidentCloseSerializer(serializers.Serializer):
     )
     extra_recipients = EmailListField()
     point_of_contact = serializers.CharField(required=False, allow_blank=True)
+    point_of_contact_email = serializers.EmailField(required=False, allow_blank=True)
     problem_description = serializers.CharField(required=False, allow_blank=True)
     workaround = serializers.CharField(required=False, allow_blank=True)
     next_communication_time = serializers.DateTimeField(required=False, allow_null=True)
@@ -465,6 +512,7 @@ class AnnouncementTemplateSerializer(serializers.Serializer):
     label = serializers.CharField()
     subject = serializers.CharField()
     body = serializers.CharField()
+    html_body = serializers.CharField(required=False, allow_blank=True)
 
 
 class LoginSerializer(TokenObtainPairSerializer):

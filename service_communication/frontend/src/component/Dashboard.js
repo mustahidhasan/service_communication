@@ -88,6 +88,26 @@ const parseIstDateTimeInput = (value) => {
   return { year, month, day, hour, minute };
 };
 
+const escapeHtml = (value = '') =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const formatNotesHtml = (value = '') => {
+  const lines = value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) {
+    return '';
+  }
+  const paragraphs = lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('');
+  return `<div class="template-notes">${paragraphs}</div>`;
+};
+
 const normalizeDateForApi = (value) => {
   const parts = parseIstDateTimeInput(value);
   if (!parts) return null;
@@ -101,6 +121,11 @@ const getDefaultPointOfContact = (auth) => {
   const { first_name: firstName, last_name: lastName, email } = auth.user;
   const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
   return fullName || email || '';
+};
+
+const getDefaultPointOfContactEmail = (auth) => {
+  if (!auth?.user) return '';
+  return auth.user.email || '';
 };
 
 const buildDefaultIncidentForm = () => ({
@@ -124,17 +149,11 @@ const buildDefaultMessageForm = (auth) => ({
   distributionLists: [],
   extraRecipients: '',
   pointOfContact: getDefaultPointOfContact(auth),
+  pointOfContactEmail: getDefaultPointOfContactEmail(auth),
   problemDescription: '',
   workaround: '',
   nextCommunicationTime: '',
 });
-
-const defaultListForm = {
-  name: '',
-  description: '',
-  emails: '',
-  scope: 'team',
-};
 
 const defaultTeamForm = {
   name: '',
@@ -145,6 +164,8 @@ const defaultCloseForm = {
   subject: '',
   body: '',
   distribution_list: '',
+  point_of_contact: '',
+  point_of_contact_email: '',
 };
 
 function Dashboard({ apiBaseUrl, auth, setAuth }) {
@@ -181,13 +202,13 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
     templateType: 'incident',
   }));
   const [messageFiles, setMessageFiles] = useState([]);
-  const [listForm, setListForm] = useState(defaultListForm);
-  const [inlineListForm, setInlineListForm] = useState(defaultListForm);
   const [teamForm, setTeamForm] = useState(defaultTeamForm);
-  const [closeForm, setCloseForm] = useState(defaultCloseForm);
+  const [closeForm, setCloseForm] = useState(() => ({
+    ...defaultCloseForm,
+    point_of_contact: getDefaultPointOfContact(auth),
+    point_of_contact_email: getDefaultPointOfContactEmail(auth),
+  }));
   const [editingTeamId, setEditingTeamId] = useState(null);
-  const [editingListId, setEditingListId] = useState(null);
-  const [editingListTeamId, setEditingListTeamId] = useState(null);
   const [summary, setSummary] = useState({ open_incident_count: 0, recent_messages: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -197,7 +218,11 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
   const [emailSuccessModalVisible, setEmailSuccessModalVisible] = useState(false);
   const [activeIncidentModal, setActiveIncidentModal] = useState(null);
   const [pendingPanelFromQuery, setPendingPanelFromQuery] = useState(null);
-  const [showInlineListModal, setShowInlineListModal] = useState(false);
+  const [showDirectoryModal, setShowDirectoryModal] = useState(false);
+  const [directorySelectionTarget, setDirectorySelectionTarget] = useState('incident');
+  const [directoryResults, setDirectoryResults] = useState([]);
+  const [directoryQuery, setDirectoryQuery] = useState('');
+  const [directoryLoading, setDirectoryLoading] = useState(false);
   const [forceTeamFromIncident, setForceTeamFromIncident] = useState(false);
   const [incidentStatusFilter, setIncidentStatusFilter] = useState('all');
   const refreshPromiseRef = useRef(null);
@@ -652,53 +677,6 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
     [setDistributionLists]
   );
 
-  const formatApiError = useCallback((err) => {
-    if (!err) return 'Something went wrong. Please try again.';
-    const data = err.responseData;
-    if (data) {
-      if (Array.isArray(data.non_field_errors) && data.non_field_errors.length) {
-        return data.non_field_errors.join(' ');
-      }
-      if (Array.isArray(data.entries)) {
-        const entryMessages = data.entries
-          .map((entryErr, index) => {
-            if (!entryErr) return null;
-            const fieldMessages = Object.entries(entryErr)
-              .map(([field, value]) => {
-                if (Array.isArray(value) && value.length) {
-                  return `${field.charAt(0).toUpperCase() + field.slice(1)} ${index + 1}: ${value.join(', ')}`;
-                }
-                if (typeof value === 'string' && value.trim()) {
-                  return `${field.charAt(0).toUpperCase() + field.slice(1)} ${index + 1}: ${value}`;
-                }
-                return null;
-              })
-              .filter(Boolean);
-            return fieldMessages.join(' ');
-          })
-          .filter(Boolean);
-        if (entryMessages.length) {
-          return entryMessages.join(' ');
-        }
-      }
-      const otherField = Object.entries(data)
-        .map(([field, value]) => {
-          if (Array.isArray(value) && value.length) {
-            return `${field}: ${value.join(', ')}`;
-          }
-          if (typeof value === 'string' && value.trim()) {
-            return `${field}: ${value}`;
-          }
-          return null;
-        })
-        .filter(Boolean);
-      if (otherField.length) {
-        return otherField[0];
-      }
-    }
-    return err.message || 'Something went wrong. Please try again.';
-  }, []);
-
   const distributionLookup = useMemo(() => {
     const map = new Map();
     (distributionLists || []).forEach((list) => map.set(list.id, list));
@@ -829,27 +807,40 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
 
   const messageTemplateContext = useMemo(() => {
     const incident = selectedIncidentDetails;
-    const fallbackSummary =
-      incident?.summary || incident?.problem_description || messageForm.problemDescription || '';
+    const fallbackProblem =
+      messageForm.problemDescription || incident?.problem_description || incident?.summary || '';
+    const fallbackWorkaround = messageForm.workaround || incident?.workaround || '';
     const fallbackTitle = incident?.title || incident?.summary || messageForm.subject || '';
     const nextCommunicationValue =
-      incident?.next_communication_time ||
-      (messageForm.nextCommunicationTime ? normalizeDateForApi(messageForm.nextCommunicationTime) : null);
+      (messageForm.nextCommunicationTime && normalizeDateForApi(messageForm.nextCommunicationTime)) ||
+      incident?.next_communication_time;
     const formattedNextUpdate = nextCommunicationValue ? formatDateTime(nextCommunicationValue) : '';
+    const notesHtml = formatNotesHtml(messageForm.body || '');
     return {
-      title: fallbackTitle,
-      summary: fallbackSummary,
+      incident_title: fallbackTitle,
+      incident_number: incident?.inc_number || incident?.reference_id || '',
+      incident_reference: incident?.reference_id || '',
+      problem: fallbackProblem,
+      workaround: fallbackWorkaround || 'No workaround available.',
       impact: incident?.impact || '',
       severity: incident?.severity || '',
       status: incident?.status || '',
       next_update: formattedNextUpdate,
-      effective_date: formattedNextUpdate,
+      poc_name: messageForm.pointOfContact || getDefaultPointOfContact(auth),
+      poc_email: messageForm.pointOfContactEmail || getDefaultPointOfContactEmail(auth),
+      custom_notes: messageForm.body || '',
+      custom_notes_html: notesHtml,
     };
   }, [
+    auth,
     selectedIncidentDetails,
+    messageForm.body,
+    messageForm.pointOfContact,
+    messageForm.pointOfContactEmail,
     messageForm.problemDescription,
     messageForm.subject,
     messageForm.nextCommunicationTime,
+    messageForm.workaround,
   ]);
 
   useEffect(() => {
@@ -882,6 +873,7 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
       return {
         subject: applyTokens(template.subject || ''),
         body: applyTokens(template.body || ''),
+        html: template.html_body ? applyTokens(template.html_body) : '',
       };
     },
     [templateLookup, messageTemplateContext]
@@ -892,38 +884,43 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
     [getTemplatePreview, messageForm.templateType]
   );
 
+  const applyTemplateSubject = useCallback(() => {
+    if (!messageTemplatePreview?.subject) return;
+    setMessageForm((prev) => ({
+      ...prev,
+      subject: messageTemplatePreview.subject,
+    }));
+    lastTemplateAppliedRef.current = messageForm.templateType;
+    showToast('Template subject applied');
+  }, [messageForm.templateType, messageTemplatePreview, showToast]);
+
   useEffect(() => {
     if (!messageTemplatePreview) return;
     setMessageForm((prev) => {
-      if (prev.subject || prev.body) {
+      if (prev.subject) {
         return prev;
       }
       lastTemplateAppliedRef.current = prev.templateType;
       return {
         ...prev,
         subject: messageTemplatePreview.subject,
-        body: messageTemplatePreview.body,
       };
     });
   }, [messageTemplatePreview]);
 
   useEffect(() => {
-    if (!messageTemplatePreview) return;
-    if (lastTemplateAppliedRef.current === messageForm.templateType) {
-      return;
-    }
-    lastTemplateAppliedRef.current = messageForm.templateType;
-    setMessageForm((prev) => ({
-      ...prev,
-      subject: messageTemplatePreview.subject,
-      body: messageTemplatePreview.body,
-    }));
-  }, [messageForm.templateType, messageTemplatePreview]);
-
-  useEffect(() => {
     setMessageForm((prev) => ({
       ...prev,
       pointOfContact: prev.pointOfContact || getDefaultPointOfContact(auth),
+      pointOfContactEmail: prev.pointOfContactEmail || getDefaultPointOfContactEmail(auth),
+    }));
+  }, [auth]);
+
+  useEffect(() => {
+    setCloseForm((prev) => ({
+      ...prev,
+      point_of_contact: prev.point_of_contact || getDefaultPointOfContact(auth),
+      point_of_contact_email: prev.point_of_contact_email || getDefaultPointOfContactEmail(auth),
     }));
   }, [auth]);
 
@@ -944,6 +941,7 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
     setMessageForm((prev) => ({
       ...prev,
       pointOfContact: prev.pointOfContact || getDefaultPointOfContact(auth),
+      pointOfContactEmail: prev.pointOfContactEmail || getDefaultPointOfContactEmail(auth),
       problemDescription: details.problem_description || '',
       workaround: details.workaround || '',
       nextCommunicationTime: toLocalInputValue(details.next_communication_time),
@@ -1203,6 +1201,7 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
       payload.append('body', messageForm.body);
       payload.append('template_type', messageForm.templateType);
       payload.append('point_of_contact', messageForm.pointOfContact);
+      payload.append('point_of_contact_email', messageForm.pointOfContactEmail);
       payload.append('problem_description', messageForm.problemDescription);
       payload.append('workaround', messageForm.workaround);
       const nextComms = normalizeDateForApi(messageForm.nextCommunicationTime);
@@ -1244,102 +1243,6 @@ function Dashboard({ apiBaseUrl, auth, setAuth }) {
     }
   };
 
-const parseEntriesFromEmails = (rawInput) => {
-  return (rawInput || '')
-    .split(/[\n,;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => {
-      const [address, entryDescription] = item.split('|').map((part) => part.trim());
-      return {
-        email: address,
-        description: entryDescription || '',
-      };
-    });
-};
-
-  const formatEntriesForInput = (entries) => {
-    if (!Array.isArray(entries) || !entries.length) {
-      return '';
-    }
-    return entries
-      .map((entry) => (entry.description ? `${entry.email} | ${entry.description}` : entry.email))
-      .join('\n');
-  };
-
-  const resetListForm = () => {
-    setListForm(defaultListForm);
-    setEditingListId(null);
-    setEditingListTeamId(null);
-  };
-
-  const handleDistributionListSubmit = async (event) => {
-    event.preventDefault();
-    try {
-      setLoading(true);
-      setError('');
-      const entries = parseEntriesFromEmails(listForm.emails);
-      const targetTeam =
-        editingListId != null
-          ? editingListTeamId
-          : listForm.scope === 'team'
-          ? selectedTeam
-          : null;
-      if (listForm.scope === 'team' && !targetTeam) {
-        throw new Error('Select a team before creating a team-scoped list.');
-      }
-      const payload = {
-        name: listForm.name,
-        description: listForm.description,
-        team: targetTeam,
-        entries,
-      };
-      let result = null;
-      if (editingListId) {
-        result = await apiRequest(`/distribution-lists/${editingListId}/`, {
-          method: 'PATCH',
-          body: payload,
-        });
-        showToast('Distribution list updated');
-      } else {
-        result = await apiRequest('/distribution-lists/', {
-          method: 'POST',
-          body: payload,
-        });
-        showToast('Distribution list is created');
-        if (result?.id) {
-          const normalizedId = Number.isNaN(Number(result.id)) ? result.id : Number(result.id);
-          setIncidentForm((prev) => ({
-            ...prev,
-            distributionLists: Array.from(new Set([...prev.distributionLists, normalizedId])),
-          }));
-        }
-      }
-      if (result?.id) {
-        mergeDistributionListItem(result);
-      }
-      resetListForm();
-      await loadDistributionLists();
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDistributionListEdit = (list) => {
-    if (!list) return;
-    setEditingListId(list.id);
-    setEditingListTeamId(list.team || null);
-    setListForm({
-      name: list.name || '',
-      description: list.description || '',
-      emails: formatEntriesForInput(list.entries),
-      scope: list.team ? 'team' : 'global',
-    });
-    setActiveSubNav('lists');
-  };
-
   const handleDistributionListDelete = async (listId) => {
     if (!listId) return;
     if (typeof window !== 'undefined') {
@@ -1352,9 +1255,6 @@ const parseEntriesFromEmails = (rawInput) => {
       setLoading(true);
       setError('');
       await apiRequest(`/distribution-lists/${listId}/`, { method: 'DELETE' });
-      if (editingListId === listId) {
-        resetListForm();
-      }
       showToast('Distribution list deleted');
       await loadDistributionLists();
     } catch (err) {
@@ -1364,66 +1264,84 @@ const parseEntriesFromEmails = (rawInput) => {
     }
   };
 
-  const openInlineListModal = () => {
-    setInlineListForm({
-      name: '',
-      description: '',
-      emails: '',
-      scope: selectedTeam ? 'team' : 'global',
-    });
-    setShowInlineListModal(true);
-  };
-
-  const closeInlineListModal = () => {
-    setShowInlineListModal(false);
-    setInlineListForm(defaultListForm);
-  };
-
-  const handleInlineListSubmit = async (event) => {
-    event.preventDefault();
-    if (!inlineListForm.name.trim()) {
-      setError('List name is required.');
-      return;
-    }
-    try {
-      setLoading(true);
-      setError('');
-      const entries = parseEntriesFromEmails(inlineListForm.emails);
-      const payload = {
-        name: inlineListForm.name.trim(),
-        description: inlineListForm.description,
-        entries,
-      };
-      if (inlineListForm.scope === 'team') {
-        if (!selectedTeam) {
-          setError('Select a team before creating a team-scoped list.');
-          return;
-        }
-        payload.team = selectedTeam;
-      } else {
-        payload.team = null;
+  const applyDirectorySelection = useCallback(
+    (listId) => {
+      const normalizedId = Number(listId);
+      if (Number.isNaN(normalizedId)) {
+        return;
       }
-      const created = await apiRequest('/distribution-lists/', {
-        method: 'POST',
-        body: payload,
-      });
-      showToast('Distribution list created');
-      closeInlineListModal();
-      await loadDistributionLists();
-      if (created?.id) {
-        mergeDistributionListItem(created);
-        const normalizedId = Number.isNaN(Number(created.id)) ? created.id : Number(created.id);
+      if (directorySelectionTarget === 'message') {
+        setMessageForm((prev) => {
+          const nextLists = Array.from(new Set([...(prev.distributionLists || []), normalizedId]));
+          return { ...prev, distributionLists: nextLists };
+        });
+      } else {
         setIncidentForm((prev) => {
           const nextLists = Array.from(new Set([...(prev.distributionLists || []), normalizedId]));
           return { ...prev, distributionLists: nextLists };
         });
       }
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [directorySelectionTarget]
+  );
+
+  const loadDirectoryLists = useCallback(
+    async (query = '') => {
+      try {
+        setDirectoryLoading(true);
+        const results = await apiRequest(
+          `/directory/distribution-lists/?search=${encodeURIComponent(query)}`
+        );
+        setDirectoryResults(Array.isArray(results) ? results : []);
+      } catch (err) {
+        setDirectoryResults([]);
+        setError(err.message);
+      } finally {
+        setDirectoryLoading(false);
+      }
+    },
+    [apiRequest, setError]
+  );
+
+  const openDirectoryModal = useCallback(
+    (target = 'incident') => {
+      setDirectorySelectionTarget(target);
+      setDirectoryQuery('');
+      setShowDirectoryModal(true);
+      loadDirectoryLists('');
+    },
+    [loadDirectoryLists]
+  );
+
+  const closeDirectoryModal = useCallback(() => {
+    setShowDirectoryModal(false);
+    setDirectoryResults([]);
+    setDirectoryQuery('');
+  }, []);
+
+  const handleImportDirectoryList = useCallback(
+    async (groupId) => {
+      if (!groupId) return;
+      try {
+        setDirectoryLoading(true);
+        const imported = await apiRequest('/directory/distribution-lists/', {
+          method: 'POST',
+          body: { id: groupId },
+        });
+        if (imported?.id) {
+          mergeDistributionListItem(imported);
+          applyDirectorySelection(imported.id);
+          showToast('Distribution list added');
+          closeDirectoryModal();
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setDirectoryLoading(false);
+      }
+    },
+    [apiRequest, applyDirectorySelection, closeDirectoryModal, mergeDistributionListItem, setError, showToast]
+  );
 
   const clearPanelQuery = useCallback(() => {
     const params = new URLSearchParams(location.search || '');
@@ -1456,9 +1374,20 @@ const parseEntriesFromEmails = (rawInput) => {
           final_subject: closeForm.subject,
           final_body: closeForm.body,
           distribution_list: closeForm.distribution_list || null,
+          point_of_contact: closeForm.point_of_contact || getDefaultPointOfContact(auth),
+          point_of_contact_email:
+            closeForm.point_of_contact_email || getDefaultPointOfContactEmail(auth),
+          problem_description: selectedIncidentDetails?.problem_description || '',
+          workaround: selectedIncidentDetails?.workaround || '',
+          next_communication_time: selectedIncidentDetails?.next_communication_time || null,
+          template_type: selectedIncidentDetails?.template_type || incidentForm.templateType,
         },
       });
-      setCloseForm(defaultCloseForm);
+      setCloseForm({
+        ...defaultCloseForm,
+        point_of_contact: getDefaultPointOfContact(auth),
+        point_of_contact_email: getDefaultPointOfContactEmail(auth),
+      });
       await Promise.all([loadIncidents(), loadMessages(selectedIncident), loadSummary()]);
       showToast('Final message sent, incident is closed');
       const params = new URLSearchParams(location.search || '');
@@ -1521,7 +1450,7 @@ const parseEntriesFromEmails = (rawInput) => {
                 <ul>
                   {recentMessagesAll.map((item) => (
                     <li key={item.id}>
-                      <strong>{item.incident_reference}</strong> — {item.subject}
+                      <strong>{item.incident_inc_number || item.incident_reference}</strong> — {item.subject}
                     </li>
                   ))}
                   {!recentMessagesAll.length && <li>No recent messages.</li>}
@@ -1533,7 +1462,7 @@ const parseEntriesFromEmails = (rawInput) => {
                   <ul>
                     {recentMessagesTeam.map((item) => (
                       <li key={`team-${item.id}`}>
-                        <strong>{item.incident_reference}</strong> — {item.subject}
+                        <strong>{item.incident_inc_number || item.incident_reference}</strong> — {item.subject}
                       </li>
                     ))}
                     {!recentMessagesTeam.length && <li>No recent messages for this team.</li>}
@@ -1793,8 +1722,8 @@ const parseEntriesFromEmails = (rawInput) => {
               <label className="form-field">
                 <div className="field-header">
                   <span>Distribution Lists</span>
-                  <button type="button" className="text-link" onClick={openInlineListModal}>
-                    + Create Distribution List
+                  <button type="button" className="text-link" onClick={() => openDirectoryModal('incident')}>
+                    + Add from Directory
                   </button>
                 </div>
                 <select
@@ -1806,12 +1735,13 @@ const parseEntriesFromEmails = (rawInput) => {
                   {availableLists.map((list) => (
                     <option key={list.id} value={list.id}>
                       {list.name}
+                      {list.email ? ` (${list.email})` : ''}
                     </option>
                   ))}
                 </select>
                 {availableLists.length === 0 && (
                   <small className="form-hint">
-                    No distribution lists yet. Use "Create Distribution List" to add one before saving.
+                    No distribution lists yet. Use "Add from Directory" to pull in a Microsoft 365 list.
                   </small>
                 )}
               </label>
@@ -1852,14 +1782,14 @@ const parseEntriesFromEmails = (rawInput) => {
                       className={incident.id === selectedIncident ? 'active' : ''}
                       onClick={() => setSelectedIncident(incident.id)}
                     >
-                      <div>
-                        <strong>{incident.reference_id || incident.inc_number || incident.id}</strong> — {incident.title}
+                      <div className="incident-row">
+                        <div className="incident-heading">
+                          <span className="inc-number-chip">{incident.inc_number || 'INC —'}</span>
+                          <span>{incident.title}</span>
+                        </div>
                         <span className={`status-pill ${incident.status}`}>{incident.status}</span>
                       </div>
-                      <small>
-                        {incident.inc_number ? `${incident.inc_number} • ` : ''}
-                        {incident.incident_type?.toUpperCase()}
-                      </small>
+                      <small>{incident.incident_type?.toUpperCase()}</small>
                     </li>
                   ))}
                 </ul>
@@ -1877,7 +1807,7 @@ const parseEntriesFromEmails = (rawInput) => {
                 <>
                   <div className="incident-details-card">
                     <p>
-                      <strong>INC:</strong> {selectedIncidentDetails.inc_number || '—'}
+                      <strong>SNOW INC:</strong> {selectedIncidentDetails.inc_number || '—'}
                     </p>
                     <p>
                       <strong>Type:</strong> {selectedIncidentDetails.incident_type}
@@ -1927,67 +1857,17 @@ const parseEntriesFromEmails = (rawInput) => {
         return (
           <div className="tab-stack">
             <section className="tab-panel">
-              <h2>{editingListId ? 'Edit Distribution List' : 'Create Distribution List'}</h2>
-              <form onSubmit={handleDistributionListSubmit} className="form-grid sc-form">
-                <label className="form-field">
-                  <span>List Name</span>
-                  <input
-                    type="text"
-                    placeholder="List name"
-                    value={listForm.name}
-                    onChange={(e) => setListForm({ ...listForm, name: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Description</span>
-                  <textarea
-                    placeholder="List description"
-                    value={listForm.description}
-                    onChange={(e) => setListForm({ ...listForm, description: e.target.value })}
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Email Addresses</span>
-                  <textarea
-                    placeholder="one@example.com | optional description"
-                    value={listForm.emails}
-                    onChange={(e) => setListForm({ ...listForm, emails: e.target.value })}
-                  />
-                </label>
-                <div className="radio-group radio-row">
-                  <label className={`chip-control${listForm.scope === 'team' ? ' active' : ''}`}>
-                    <input
-                      type="radio"
-                      value="team"
-                      checked={listForm.scope === 'team'}
-                      disabled={Boolean(editingListId)}
-                      onChange={(e) => setListForm({ ...listForm, scope: e.target.value })}
-                    />
-                    <span>Team list</span>
-                  </label>
-                  <label className={`chip-control${listForm.scope === 'global' ? ' active' : ''}`}>
-                    <input
-                      type="radio"
-                      value="global"
-                      checked={listForm.scope === 'global'}
-                      disabled={Boolean(editingListId)}
-                      onChange={(e) => setListForm({ ...listForm, scope: e.target.value })}
-                    />
-                    <span>Global list</span>
-                  </label>
-                </div>
-                <div className="form-actions">
-                    <button type="submit" className="primary" disabled={loading}>
-                      {editingListId ? 'Update Distribution List' : 'Save Distribution List'}
-                    </button>
-                    {editingListId && (
-                      <button type="button" className="secondary" onClick={resetListForm}>
-                        Cancel
-                      </button>
-                    )}
-                </div>
-              </form>
+              <h2>Active Directory Distribution Lists</h2>
+              <p>
+                Search Microsoft Active Directory and import distribution lists directly. Imported lists remain
+                available for every incident and message.
+              </p>
+              <div className="directory-actions">
+                <button type="button" className="primary" onClick={() => openDirectoryModal('incident')}>
+                  Search Directory
+                </button>
+                <small>Need a one-off address? Use the “One-off Recipients” field while sending an email.</small>
+              </div>
             </section>
             <section className="tab-panel">
               <h2>Stored Lists</h2>
@@ -1997,13 +1877,14 @@ const parseEntriesFromEmails = (rawInput) => {
                     <li key={list.id}>
                       <div className="list-item-header">
                         <div>
-                          <strong>{list.name}</strong> ({list.scope})
+                          <strong>{list.name}</strong>
+                          <br />
+                          <small>{list.email || 'No address stored'}</small>
+                          <br />
+                          <small>{list.source === 'directory' ? 'Active Directory' : 'Custom'}</small>
                         </div>
                         {list.can_manage && (
                           <div className="list-actions">
-                            <button type="button" onClick={() => handleDistributionListEdit(list)}>
-                              Edit
-                            </button>
                             <button
                               type="button"
                               className="danger"
@@ -2015,9 +1896,7 @@ const parseEntriesFromEmails = (rawInput) => {
                         )}
                       </div>
                       {list.description && <p>{list.description}</p>}
-                      <small>{Array.isArray(list.entries) ? list.entries.length : 0} recipients</small>
-                      <br />
-                      <small>Created by: {list.created_by_name || '—'}</small>
+                      <small>Managed by: {list.created_by_name || (list.source === 'directory' ? 'Active Directory' : '—')}</small>
                     </li>
                   ))
                 ) : (
@@ -2034,7 +1913,6 @@ const parseEntriesFromEmails = (rawInput) => {
 
   const showTimelineModal = activeIncidentModal === 'timeline' && Boolean(selectedIncidentDetails);
   const showCloseModal = activeIncidentModal === 'close' && Boolean(selectedIncidentDetails);
-  const showListModal = showInlineListModal;
   const timelineModal = showTimelineModal ? (
     <div className="sc-modal-overlay" role="dialog" aria-modal="true" onClick={closeIncidentModal}>
       <div className="sc-modal" onClick={(event) => event.stopPropagation()}>
@@ -2047,7 +1925,7 @@ const parseEntriesFromEmails = (rawInput) => {
         <div className="sc-modal-body">
           <div className="incident-details-card">
             <p>
-              <strong>INC:</strong> {selectedIncidentDetails?.inc_number || '—'}
+              <strong>SNOW INC:</strong> {selectedIncidentDetails?.inc_number || '—'}
             </p>
             <p>
               <strong>Status:</strong> {selectedIncidentDetails?.status || '—'}
@@ -2071,45 +1949,40 @@ const parseEntriesFromEmails = (rawInput) => {
                 ))}
               </select>
             </label>
-            {templateOptions.length > 0 && (
-              <div className="template-gallery">
-                <div className="template-gallery-header">
-                  <strong>Template Library</strong>
-                  <small>Select a template to set the default for Email Timeline.</small>
-                </div>
-                <div className="template-gallery-scroll">
-                  {templateOptions.map((template) => (
-                    <article
-                      key={template.id}
-                      className={`template-card${preferredMessageTemplate === template.id ? ' selected' : ''}`}
+            {messageTemplatePreview && (
+              <div className="template-preview">
+                <div className="template-preview-header">
+                  <div>
+                    <strong>Template Preview</strong>
+                    <small>Automatically rendered from the fields below.</small>
+                  </div>
+                  <div className="template-preview-actions">
+                    <button type="button" className="secondary" onClick={applyTemplateSubject}>
+                      Apply Subject
+                    </button>
+                    <button
+                      type="button"
+                      className={`secondary ${
+                        preferredMessageTemplate === messageForm.templateType ? 'active' : ''
+                      }`}
+                      onClick={() => handleSetDefaultTemplate(messageForm.templateType)}
                     >
-                      <div className="template-card-header">
-                        <div>
-                          <div className="template-label">{template.label}</div>
-                          <small className="template-id">ID: {template.id}</small>
-                        </div>
-                      </div>
-                      <div className="template-subject">
-                        <strong>Subject</strong>
-                        <div className="template-snippet">{template.subject || '—'}</div>
-                      </div>
-                      <div className="template-body">
-                        <strong>Body</strong>
-                        <pre>{template.body || '—'}</pre>
-                      </div>
-                      <div className="template-card-actions">
-                        <button
-                          type="button"
-                          className={`secondary template-select ${
-                            preferredMessageTemplate === template.id ? 'active' : ''
-                          }`}
-                          onClick={() => handleSetDefaultTemplate(template.id)}
-                        >
-                          {preferredMessageTemplate === template.id ? 'Selected for Timeline' : 'Use this template'}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                      {preferredMessageTemplate === messageForm.templateType ? 'Default' : 'Set Default'}
+                    </button>
+                  </div>
+                </div>
+                <div className="template-preview-body">
+                  <p>
+                    <strong>Subject</strong> {messageTemplatePreview.subject || '—'}
+                  </p>
+                  {messageTemplatePreview.html ? (
+                    <div
+                      className="template-preview-html"
+                      dangerouslySetInnerHTML={{ __html: messageTemplatePreview.html }}
+                    />
+                  ) : (
+                    <pre>{messageTemplatePreview.body || '—'}</pre>
+                  )}
                 </div>
               </div>
             )}
@@ -2124,19 +1997,18 @@ const parseEntriesFromEmails = (rawInput) => {
               />
             </label>
             <label className="form-field">
-              <span>Email Body</span>
+              <span>Additional Notes (optional)</span>
               <textarea
-                placeholder="Email body"
+                placeholder="Any extra context to append after the template body"
                 value={messageForm.body}
                 onChange={(e) => setMessageForm({ ...messageForm, body: e.target.value })}
-                required
               />
             </label>
             <label className="form-field">
               <div className="field-header">
                 <span>Distribution Lists</span>
-                <button type="button" className="text-link" onClick={openInlineListModal}>
-                  + Create Distribution List
+                <button type="button" className="text-link" onClick={() => openDirectoryModal('message')}>
+                  + Add from Directory
                 </button>
               </div>
               <select
@@ -2147,6 +2019,7 @@ const parseEntriesFromEmails = (rawInput) => {
                 {availableLists.map((list) => (
                   <option key={list.id} value={list.id}>
                     {list.name}
+                    {list.email ? ` (${list.email})` : ''}
                   </option>
                 ))}
               </select>
@@ -2158,6 +2031,18 @@ const parseEntriesFromEmails = (rawInput) => {
                 placeholder="Point of contact"
                 value={messageForm.pointOfContact}
                 onChange={(e) => setMessageForm({ ...messageForm, pointOfContact: e.target.value })}
+              />
+            </label>
+            <label className="form-field">
+              <span>Point of Contact Email</span>
+              <input
+                type="email"
+                placeholder="name@example.com"
+                value={messageForm.pointOfContactEmail}
+                onChange={(e) =>
+                  setMessageForm({ ...messageForm, pointOfContactEmail: e.target.value })
+                }
+                required
               />
             </label>
             <label className="form-field">
@@ -2205,7 +2090,7 @@ const parseEntriesFromEmails = (rawInput) => {
               </div>
             </label>
             <label className="form-field">
-              <span>Extra Recipients</span>
+              <span>One-off Recipients</span>
               <textarea
                 placeholder="Comma or newline separated emails"
                 value={messageForm.extraRecipients}
@@ -2229,9 +2114,19 @@ const parseEntriesFromEmails = (rawInput) => {
                   <strong>{message.subject}</strong>
                   <span>{formatDateTime(message.created_at)}</span>
                 </div>
-                <p>{message.body}</p>
+                {message.body_html ? (
+                  <div
+                    className="timeline-body"
+                    dangerouslySetInnerHTML={{ __html: message.body_html }}
+                  />
+                ) : (
+                  <p>{message.body}</p>
+                )}
                 <div className="timeline-meta">
-                  <small>POC: {message.point_of_contact || '—'}</small>
+                  <small>
+                    POC: {message.point_of_contact || '—'}
+                    {message.point_of_contact_email ? ` (${message.point_of_contact_email})` : ''}
+                  </small>
                   <small>Next Communication: {formatDateTime(message.next_communication_time)}</small>
                 </div>
                 <p>
@@ -2245,13 +2140,15 @@ const parseEntriesFromEmails = (rawInput) => {
                 <small>
                   Distribution:{' '}
                   {(() => {
-                    const listNames = [...(message.distribution_lists || [])].map(
-                      (id) => distributionLookup.get(id)?.name || `List ${id}`
-                    );
+                    const toLabel = (list) =>
+                      list ? `${list.name}${list.email ? ` (${list.email})` : ''}` : null;
+                    const listNames = [...(message.distribution_lists || [])]
+                      .map((id) => toLabel(distributionLookup.get(id)) || 'Directory list')
+                      .filter(Boolean);
                     if (!listNames.length && message.distribution_list) {
                       listNames.push(
-                        distributionLookup.get(message.distribution_list)?.name ||
-                          `List ${message.distribution_list}`
+                        toLabel(distributionLookup.get(message.distribution_list)) ||
+                          'Directory list'
                       );
                     }
                     return listNames.length ? listNames.join(', ') : '—';
@@ -2307,9 +2204,31 @@ const parseEntriesFromEmails = (rawInput) => {
                 {availableLists.map((list) => (
                   <option key={list.id} value={list.id}>
                     {list.name}
+                    {list.email ? ` (${list.email})` : ''}
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="form-field">
+              <span>Point of Contact</span>
+              <input
+                type="text"
+                placeholder="Name"
+                value={closeForm.point_of_contact}
+                onChange={(e) => setCloseForm({ ...closeForm, point_of_contact: e.target.value })}
+              />
+            </label>
+            <label className="form-field">
+              <span>Point of Contact Email</span>
+              <input
+                type="email"
+                placeholder="name@example.com"
+                value={closeForm.point_of_contact_email}
+                onChange={(e) =>
+                  setCloseForm({ ...closeForm, point_of_contact_email: e.target.value })
+                }
+                required
+              />
             </label>
                     <button type="submit" className="primary" disabled={loading}>
                       Close Incident & Notify
@@ -2320,72 +2239,58 @@ const parseEntriesFromEmails = (rawInput) => {
     </div>
   ) : null;
 
-  const inlineListModal = showListModal ? (
-    <div className="sc-modal-overlay" role="dialog" aria-modal="true" onClick={closeInlineListModal}>
+  const directoryModal = showDirectoryModal ? (
+    <div className="sc-modal-overlay" role="dialog" aria-modal="true" onClick={closeDirectoryModal}>
       <div className="sc-modal" onClick={(event) => event.stopPropagation()}>
         <div className="sc-modal-header">
-          <h3>Create Distribution List</h3>
-          <button type="button" className="modal-close" onClick={closeInlineListModal} aria-label="Close dialog">
+          <h3>Microsoft Directory Lists</h3>
+          <button type="button" className="modal-close" onClick={closeDirectoryModal} aria-label="Close dialog">
             ✖
           </button>
         </div>
         <div className="sc-modal-body">
-          <form onSubmit={handleInlineListSubmit} className="form-grid sc-form">
-            <label className="form-field">
-              <span>List Name</span>
+          <label className="form-field">
+            <span>Search</span>
+            <div className="directory-search">
               <input
                 type="text"
-                placeholder="List name"
-                value={inlineListForm.name}
-                onChange={(e) => setInlineListForm({ ...inlineListForm, name: e.target.value })}
-                required
+                placeholder="Start typing a list name"
+                value={directoryQuery}
+                onChange={(e) => setDirectoryQuery(e.target.value)}
               />
-            </label>
-            <label className="form-field">
-              <span>Description</span>
-              <textarea
-                placeholder="Optional description"
-                value={inlineListForm.description}
-                onChange={(e) => setInlineListForm({ ...inlineListForm, description: e.target.value })}
-              />
-            </label>
-            <label className="form-field">
-              <span>Email Addresses</span>
-              <textarea
-                placeholder="one@example.com | optional description"
-                value={inlineListForm.emails}
-                onChange={(e) => setInlineListForm({ ...inlineListForm, emails: e.target.value })}
-              />
-            </label>
-            <div className="radio-group radio-row">
-              <label className={`chip-control${inlineListForm.scope === 'team' ? ' active' : ''}`}>
-                <input
-                  type="radio"
-                  value="team"
-                  checked={inlineListForm.scope === 'team'}
-                  onChange={(e) => setInlineListForm({ ...inlineListForm, scope: e.target.value })}
-                />
-                <span>Team list</span>
-              </label>
-              <label className={`chip-control${inlineListForm.scope === 'global' ? ' active' : ''}`}>
-                <input
-                  type="radio"
-                  value="global"
-                  checked={inlineListForm.scope === 'global'}
-                  onChange={(e) => setInlineListForm({ ...inlineListForm, scope: e.target.value })}
-                />
-                <span>Global list</span>
-              </label>
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="primary" disabled={loading}>
-                Save Distribution List
-              </button>
-              <button type="button" className="secondary" onClick={closeInlineListModal}>
-                Cancel
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => loadDirectoryLists(directoryQuery)}
+                disabled={directoryLoading}
+              >
+                {directoryLoading ? 'Searching…' : 'Search'}
               </button>
             </div>
-          </form>
+          </label>
+          <ul className="directory-results">
+            {directoryResults.map((result) => (
+              <li key={result.id}>
+                <div>
+                  <strong>{result.name}</strong>
+                  <br />
+                  <small>{result.mail}</small>
+                  {result.description && <p>{result.description}</p>}
+                </div>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => handleImportDirectoryList(result.id)}
+                  disabled={directoryLoading}
+                >
+                  Add
+                </button>
+              </li>
+            ))}
+            {!directoryResults.length && (
+              <li className="empty-state">Search Active Directory to find distribution lists.</li>
+            )}
+          </ul>
         </div>
       </div>
     </div>
@@ -2473,7 +2378,7 @@ const parseEntriesFromEmails = (rawInput) => {
 
       {timelineModal}
       {closeModal}
-      {inlineListModal}
+      {directoryModal}
 
       {toastMessage && (
         <div className="toast" role="status" aria-live="polite">

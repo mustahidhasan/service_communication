@@ -1,3 +1,5 @@
+import logging
+
 from django.db.models import Q, Count
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status, mixins
@@ -29,7 +31,14 @@ from .constants import ANNOUNCEMENT_TEMPLATES
 from USER.models import UserRole, get_user_role, user_is_global_team_admin, user_is_system_admin
 
 from .permissions import user_can_manage_team, user_in_team
-from .services import deliver_incident_message
+from .services import deliver_incident_message, build_incident_message_bodies
+from .ms_graph import (
+    fetch_directory_lists,
+    fetch_directory_list_by_id,
+    ActiveDirectoryConfigurationError,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class LoginView(TokenObtainPairView):
@@ -149,6 +158,8 @@ class DistributionListViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def perform_destroy(self, instance):
+        if instance.is_directory_managed:
+            raise PermissionDenied("Directory-managed lists are synced from Active Directory.")
         if not self._user_can_manage_list(self.request.user, instance):
             raise PermissionDenied("You do not have permission to delete this list.")
         instance.delete()
@@ -162,6 +173,74 @@ class DistributionListViewSet(viewsets.ModelViewSet):
         if team and user_can_manage_team(user, team):
             return True
         return False
+
+
+class DirectoryDistributionListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        search = request.query_params.get("search") or ""
+        try:
+            groups = fetch_directory_lists(search=search)
+        except ActiveDirectoryConfigurationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("Failed to fetch Microsoft 365 groups: %s", exc)
+            return Response(
+                {"detail": "Unable to load directory distribution lists."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        data = []
+        for group in groups:
+            email = group.get("mail")
+            if not email:
+                continue
+            data.append(
+                {
+                    "id": group.get("id"),
+                    "name": group.get("displayName") or group.get("mailNickname") or email,
+                    "mail": email,
+                    "description": group.get("description") or group.get("mailNickname") or "",
+                }
+            )
+        return Response(data)
+
+    def post(self, request):
+        object_id = request.data.get("id") or request.data.get("object_id")
+        if not object_id:
+            return Response({"detail": "Directory group id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            group = fetch_directory_list_by_id(object_id)
+        except ActiveDirectoryConfigurationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("Failed to import directory list: %s", exc)
+            return Response(
+                {"detail": "Unable to import the requested distribution list."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        if not group or not group.get("mail"):
+            return Response(
+                {"detail": "Distribution list email address was not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        defaults = {
+            "name": group.get("displayName") or group.get("mailNickname") or group.get("mail"),
+            "description": group.get("description") or "",
+            "email": group.get("mail"),
+            "team": None,
+            "source": DistributionList.Source.DIRECTORY,
+        }
+        distribution_list, created = DistributionList.objects.update_or_create(
+            external_id=group.get("id"),
+            defaults=defaults,
+        )
+        if created and not distribution_list.created_by:
+            distribution_list.created_by = request.user
+            distribution_list.save(update_fields=["created_by"])
+        distribution_list.entries.all().delete()
+        serializer = DistributionListSerializer(distribution_list, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class IncidentViewSet(viewsets.ModelViewSet):
@@ -226,6 +305,9 @@ class IncidentViewSet(viewsets.ModelViewSet):
             point_of_contact=data.get("point_of_contact")
             or request.user.get_full_name()
             or request.user.email,
+            point_of_contact_email=data.get("point_of_contact_email")
+            or request.user.email
+            or "",
             problem_description=data.get("problem_description") or incident.problem_description,
             workaround=data.get("workaround") or incident.workaround,
             next_communication_time=data.get("next_communication_time") or incident.next_communication_time,
@@ -236,6 +318,16 @@ class IncidentViewSet(viewsets.ModelViewSet):
             message.distribution_lists.set(incident.distribution_lists.all())
         elif distribution_list:
             message.distribution_lists.add(distribution_list)
+        text_body, html_body = build_incident_message_bodies(message, data.get("final_body", ""))
+        update_fields = []
+        if text_body:
+            message.body = text_body
+            update_fields.append("body")
+        if html_body is not None:
+            message.body_html = html_body
+            update_fields.append("body_html")
+        if update_fields:
+            message.save(update_fields=update_fields)
         deliver_incident_message(message)
         return Response(self.get_serializer(incident).data)
 
@@ -296,6 +388,7 @@ class DashboardSummaryView(APIView):
                 {
                     "id": message.id,
                     "incident_reference": message.incident.reference_id,
+                    "incident_inc_number": message.incident.inc_number,
                     "subject": message.subject,
                     "created_at": message.created_at.isoformat(),
                     "status": message.incident.status,
