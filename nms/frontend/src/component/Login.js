@@ -173,9 +173,6 @@ function Login({ apiBaseUrl, auth, setAuth }) {
           <button type="button" onClick={handleSSOLogin} disabled={loading}>
             {loading ? 'Signing you in…' : 'Login via SSO'}
           </button>
-          <button className="secondary-login-action" type="button" onClick={handleEnterWorkspace} disabled={loading}>
-            {loading ? 'Loading workspace…' : 'Enter Service Communications'}
-          </button>
           <small className="login-hint">
             SSO is required. Reach out to the Service Communication admins if you need access.
           </small>
