@@ -3,16 +3,11 @@ from .models import (
     Team,
     TeamMembership,
     DistributionList,
-    DistributionListEntry,
     Incident,
     IncidentMessage,
     MessageAttachment,
+    EmailTemplate,
 )
-
-
-class DistributionListEntryInline(admin.TabularInline):
-    model = DistributionListEntry
-    extra = 0
 
 
 @admin.register(Team)
@@ -30,10 +25,16 @@ class TeamMembershipAdmin(admin.ModelAdmin):
 
 @admin.register(DistributionList)
 class DistributionListAdmin(admin.ModelAdmin):
-    list_display = ("name", "team", "description", "created_by", "created_at")
-    list_filter = ("team",)
-    search_fields = ("name", "description")
-    inlines = [DistributionListEntryInline]
+    list_display = ("name", "email", "external_id", "source", "created_at")
+    list_filter = ("source",)
+    search_fields = ("name", "email", "external_id")
+
+
+@admin.register(EmailTemplate)
+class EmailTemplateAdmin(admin.ModelAdmin):
+    list_display = ("name", "key", "version", "is_active", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "key")
 
 
 class MessageAttachmentInline(admin.TabularInline):

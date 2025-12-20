@@ -17,7 +17,15 @@ const getCookie = (name) => {
   return null;
 };
 
-function Login({ apiBaseUrl, auth, setAuth }) {
+function Login({
+  apiBaseUrl,
+  serviceApiBaseUrl = apiBaseUrl,
+  auth,
+  setAuth,
+  homePath = '/service-communications',
+  productTitle = 'Service Communication Portal',
+  metaBaseUrl,
+}) {
   const navigate = useNavigate();
   const insightsRef = useRef(null);
   const [loading, setLoading] = useState(false);
@@ -26,9 +34,9 @@ function Login({ apiBaseUrl, auth, setAuth }) {
 
   useEffect(() => {
     if (auth?.access) {
-      navigate('/service-communications', { replace: true });
+      navigate(homePath, { replace: true });
     }
-  }, [auth, navigate]);
+  }, [auth, navigate, homePath]);
 
   const performSessionLogin = useCallback(
     async ({ silent = false } = {}) => {
@@ -37,7 +45,7 @@ function Login({ apiBaseUrl, auth, setAuth }) {
       }
       try {
         const csrfToken = getCookie('csrftoken');
-        const response = await fetch(`${apiBaseUrl}/auth/session-login/`, {
+        const response = await fetch(`${serviceApiBaseUrl}/auth/session-login/`, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -49,7 +57,7 @@ function Login({ apiBaseUrl, auth, setAuth }) {
         const data = await response.json();
         if (!response.ok) {
           throw new Error(
-            data?.detail || 'Unable to open Service Communications. Please authenticate via SSO first.'
+            data?.detail || `Unable to open ${productTitle}. Please authenticate via SSO first.`
           );
         }
         flushSync(() => {
@@ -58,12 +66,12 @@ function Login({ apiBaseUrl, auth, setAuth }) {
             setAuth(data);
           }
         });
-        navigate('/service-communications', { replace: true });
+        navigate(homePath, { replace: true });
         return true;
       } catch (error) {
         if (!silent) {
-          console.error('Service Communications error:', error);
-          alert(error.message || 'Failed to open Service Communications.');
+          console.error(`${productTitle} error:`, error);
+          alert(error.message || `Failed to open ${productTitle}.`);
         }
         return false;
       } finally {
@@ -95,7 +103,7 @@ function Login({ apiBaseUrl, auth, setAuth }) {
         window.location.href = data.login_url;
       } else if (data.success) {
         setLoading(false);
-        navigate('/service-communications');
+        navigate(homePath);
       } else {
         throw new Error('Unexpected response from the login service. Please retry.');
       }
@@ -137,7 +145,7 @@ function Login({ apiBaseUrl, auth, setAuth }) {
       <div className="login-frame">
         <header className="login-header">
           <img src="logo_left.png" className="logo-left" alt="Service Communications logo" />
-          <div className="login-title">Service Communication Portal</div>
+          <div className="login-title">{productTitle}</div>
           <img src="logo_right.png" className="logo-right" alt="Service partner logo" />
           <button
             type="button"
@@ -173,15 +181,12 @@ function Login({ apiBaseUrl, auth, setAuth }) {
           <button type="button" onClick={handleSSOLogin} disabled={loading}>
             {loading ? 'Signing you in…' : 'Login via SSO'}
           </button>
-          <button className="secondary-login-action" type="button" onClick={handleEnterWorkspace} disabled={loading}>
-            {loading ? 'Loading workspace…' : 'Enter Service Communications'}
-          </button>
           <small className="login-hint">
             SSO is required. Reach out to the Service Communication admins if you need access.
           </small>
         </main>
       </div>
-      <AppFooter apiBaseUrl={apiBaseUrl} />
+      <AppFooter apiBaseUrl={apiBaseUrl} metaBaseUrl={metaBaseUrl || apiBaseUrl} />
     </div>
   );
 }
