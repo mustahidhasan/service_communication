@@ -112,7 +112,13 @@ function App() {
             />
             <Route
               path="/user-activity"
-              element={<UserActivity apiBaseUrl={rootApiBaseUrl} />}
+              element={
+                auth ? (
+                  <UserActivity apiBaseUrl={rootApiBaseUrl} auth={auth} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
             />
           </>
         )}

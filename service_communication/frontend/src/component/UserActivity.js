@@ -15,19 +15,33 @@ const formatDateTimeIST = (value) => {
   }).format(date);
 };
 
-function UserActivity({ apiBaseUrl }) {
+function UserActivity({ apiBaseUrl, auth }) {
   const navigate = useNavigate(); // initialize navigate
   const [loading, setLoading] = useState(true);
   const [activeUsers, setActiveUsers] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [activeUserCount, setActiveUserCount] = useState(0);
   const [error, setError] = useState(null);
+  const token = auth?.access;
 
   useEffect(() => {
+    if (!token) {
+      setError('Authentication required');
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
     fetch(`${apiBaseUrl}/active-users/`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
       credentials: 'include',
+      signal: controller.signal,
     })
       .then((res) => {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error('Your session expired. Please log in again.');
+        }
         if (!res.ok) throw new Error('Failed to fetch user activity');
         return res.json();
       })
@@ -38,11 +52,15 @@ function UserActivity({ apiBaseUrl }) {
         setLoading(false);
       })
       .catch((err) => {
+        if (err.name === 'AbortError') {
+          return;
+        }
         console.error(err);
         setError(err.message || 'Error loading activity');
         setLoading(false);
       });
-  }, [apiBaseUrl]);
+    return () => controller.abort();
+  }, [apiBaseUrl, token]);
 
   if (loading) return <div className="activity-loader">Loading...</div>;
   if (error) return <div className="activity-error">Error: {error}</div>;

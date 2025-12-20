@@ -4,10 +4,12 @@ from django.conf import settings
 from django.contrib.auth import login, logout, get_user_model
 from django.http import JsonResponse
 from django.utils.timezone import now, timedelta
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect
 from django.views.decorators.http import require_GET
 import logging
+from rest_framework import permissions
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
 from USER.models import UserActivity, UserProfile, UserRole, get_user_role
 
 User = get_user_model()
@@ -126,11 +128,9 @@ def azure_callback(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
 def azure_logout(request):
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "Invalid method"}, status=405)
-
     user = request.user
 
     try:
@@ -170,14 +170,15 @@ def azure_logout(request):
         f"?client_id={urllib.parse.quote(settings.AZURE_CLIENT_ID)}"
         f"&post_logout_redirect_uri={urllib.parse.quote(settings.POST_LOGOUT_REDIRECT_URI, safe='')}"
     )
-    return JsonResponse({
+    return Response({
         "success": True,
         "logout_url": azure_logout_url,
         "redirect_url": settings.FRONTEND_URL,
     })
 
 
-@login_required
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
 def active_users_dashboard(request):
     recent_threshold = now() - timedelta(minutes=15)
     active_sessions = UserActivity.objects.filter(
@@ -191,7 +192,7 @@ def active_users_dashboard(request):
 
     user_activities = UserActivity.objects.select_related('user').order_by('-timestamp')[:100]
 
-    return JsonResponse({
+    return Response({
         "active_user_count": active_users.count(),
         "active_users": [
             {
