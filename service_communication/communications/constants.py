@@ -1,7 +1,8 @@
-ANNOUNCEMENT_TEMPLATES = [
+DEFAULT_EMAIL_TEMPLATES = [
     {
         "id": "major",
         "label": "Major Incident",
+        "description": "High-severity incident update with detailed sections.",
         "subject": "Major Incident Update: {incident_title}",
         "body": (
             "Incident {incident_number} remains in progress.\n\n"
@@ -42,10 +43,12 @@ ANNOUNCEMENT_TEMPLATES = [
                 <p style="margin:16px 0 0;">Thank you,<br/>Incident Communications</p>
             </div>
         """,
+        "version": 1,
     },
     {
         "id": "incident",
         "label": "Incident",
+        "description": "Standard communications for in-progress incidents.",
         "subject": "Incident Update: {incident_title}",
         "body": (
             "Hello Team,\n\n"
@@ -79,10 +82,12 @@ ANNOUNCEMENT_TEMPLATES = [
                 <p style="margin:16px 0 0;">Thanks,<br/>Incident Communications</p>
             </div>
         """,
+        "version": 1,
     },
     {
         "id": "service",
         "label": "Service Announcement",
+        "description": "Customer-facing notice for service events.",
         "subject": "Service Announcement: {incident_title}",
         "body": (
             "Dear Customers,\n\n"
@@ -114,8 +119,9 @@ ANNOUNCEMENT_TEMPLATES = [
                 <p style="margin:16px 0 0;">Regards,<br/>Service Communications</p>
             </div>
         """,
+        "version": 1,
     },
 ]
 
 
-TEMPLATE_LOOKUP = {template["id"]: template for template in ANNOUNCEMENT_TEMPLATES}
+TEMPLATE_LOOKUP = {template["id"]: template for template in DEFAULT_EMAIL_TEMPLATES}

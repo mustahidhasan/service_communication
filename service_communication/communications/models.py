@@ -52,19 +52,12 @@ class DistributionList(models.Model):
         CUSTOM = "custom", "Custom"
         DIRECTORY = "directory", "Active Directory"
 
-    team = models.ForeignKey(
-        Team,
-        on_delete=models.CASCADE,
-        related_name="distribution_lists",
-        null=True,
-        blank=True,
-    )
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
     source = models.CharField(
-        max_length=32, choices=Source.choices, default=Source.CUSTOM, db_index=True
+        max_length=32, choices=Source.choices, default=Source.DIRECTORY, db_index=True
     )
-    external_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    external_id = models.CharField(max_length=255, unique=True, blank=True, null=True)
     email = models.EmailField(blank=True)
     created_by = models.ForeignKey(
         User,
@@ -76,42 +69,47 @@ class DistributionList(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("team", "name")
         ordering = ("name",)
-
-    @property
-    def scope(self):
-        return "global" if self.team is None else "team"
 
     @property
     def is_directory_managed(self):
         return self.source == self.Source.DIRECTORY
 
     def __str__(self):
-        prefix = "Global" if self.team is None else self.team.name
         suffix = f" ({self.email})" if self.email else ""
-        return f"{prefix}: {self.name}{suffix}"
+        return f"{self.name}{suffix}"
 
 
-class DistributionListEntry(models.Model):
-    distribution_list = models.ForeignKey(
-        DistributionList, on_delete=models.CASCADE, related_name="entries"
-    )
-    email = models.EmailField()
-    description = models.CharField(max_length=255, blank=True)
-    added_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        related_name="distribution_list_entries_added",
-        null=True,
-    )
+class EmailTemplate(models.Model):
+    key = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=150)
+    description = models.TextField(blank=True)
+    subject = models.CharField(max_length=255)
+    body_text = models.TextField()
+    body_html = models.TextField(blank=True)
+    version = models.PositiveIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ("email",)
+        ordering = ("name",)
 
     def __str__(self):
-        return self.email
+        return f"{self.name} (v{self.version})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from .template_loader import invalidate_template_cache  # pylint: disable=import-outside-toplevel
+
+        invalidate_template_cache(self.key)
+
+    def delete(self, *args, **kwargs):
+        key = self.key
+        super().delete(*args, **kwargs)
+        from .template_loader import invalidate_template_cache  # pylint: disable=import-outside-toplevel
+
+        invalidate_template_cache(key)
 
 
 class Incident(models.Model):
@@ -160,6 +158,7 @@ class Incident(models.Model):
         related_name="incidents",
         blank=True,
     )
+    default_extra_recipients = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="incidents_created"
     )
@@ -220,6 +219,8 @@ class IncidentMessage(models.Model):
     sent_to = models.JSONField(default=list, blank=True)
     delivery_status = models.CharField(max_length=50, default="pending")
     point_of_contact_email = models.EmailField(blank=True)
+    template_version = models.PositiveIntegerField(null=True, blank=True)
+    recipients_snapshot = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

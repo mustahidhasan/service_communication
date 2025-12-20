@@ -13,8 +13,8 @@ const normalizeBase = (baseUrl) => {
   return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 };
 
-function AppFooter({ apiBaseUrl }) {
-  const normalizedBase = normalizeBase(apiBaseUrl);
+function AppFooter({ apiBaseUrl, metaBaseUrl }) {
+  const normalizedBase = normalizeBase(metaBaseUrl || apiBaseUrl);
   const [contactEmail, setContactEmail] = useState(() => emailCache.get(normalizedBase) || null);
 
   useEffect(() => {

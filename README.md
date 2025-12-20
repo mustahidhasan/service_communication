@@ -140,3 +140,39 @@ The refreshed stack ships a purpose-built incident communications workflow:
 * **React Dashboard** – The new dashboard (CRA) uses the JWT APIs for login, incident creation, distribution list management, message timeline, and closure actions.
 
 > Tip: create Django users/teams via the admin, assign memberships, then log in through the SPA to manage communications.
+
+## 8 Service Communications vs. Network Operations modules
+
+* All Service Communications endpoints now live under `/api/service-communications/*`. Network Operations has its own namespace at `/api/network-operations/*`.
+* The React SPA can be run as a combined experience (default) or as a single module by setting `REACT_APP_APP_SCOPE=service` or `REACT_APP_APP_SCOPE=network`.
+* Each module has distinct routing. Service Communications continues to use `/service-communications`, while the new Network Operations console is mounted at `/network-operations`.
+* `REACT_APP_API_BASE_URL` should point to the shared `/api` root (e.g. `https://host/api`). The SPA automatically appends the module path.
+
+## 9 Microsoft Graph distribution lists
+
+* Manual/custom DL creation has been removed. Lists are sourced directly from Microsoft Entra ID via the Graph API.
+* Required environment variables: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`. The app requests `Group.Read.All` to search distribution groups.
+* UI updates:
+  * Inline AD search for incident creation, message sending, and the dedicated "Edit recipients" modal (no more modal pop-ups or scrolling).
+  * Users can add optional one-off recipients; selections persist per incident and are re-used for future updates.
+* Storage/audit rules: only the Graph object id, display name, and email are stored for lists. Recipient snapshots (including HTML/text bodies) are captured per message.
+
+## 10 Email templates
+
+* Templates are now stored in the `EmailTemplate` model and versioned via Django migrations (`communications/migrations/0004` and `0005`).
+* `/api/service-communications/templates/` lists available templates. `/api/service-communications/templates/<template_key>/preview/` renders the HTML/text preview given form context.
+* Templates can be managed in the Django admin under **Communications → Email templates** for downstream iteration without code changes.
+
+## 11 Database & migrations
+
+* Apply the new schema before running the app:
+
+```bash
+cd service_communication
+source .venv/bin/activate  # or your virtualenv
+python manage.py migrate
+```
+
+* Key changes:
+  * Removed custom DL entry tables, introduced `EmailTemplate`, incident default recipients, and audit snapshot fields.
+  * Distribution list routes are read-only; Graph search/import endpoints handle new entries.

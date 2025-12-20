@@ -1,17 +1,52 @@
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 from django.utils.html import escape, strip_tags
 from .models import IncidentMessage, DistributionList
-from .constants import TEMPLATE_LOOKUP
+from .template_loader import get_template_data
 
 
 def _list_recipients(list_obj: DistributionList) -> List[str]:
-    addresses = list(list_obj.entries.values_list("email", flat=True))
-    if not addresses and list_obj.email:
-        addresses.append(list_obj.email)
-    return addresses
+    if list_obj.email:
+        return [list_obj.email]
+    return []
+
+
+class _SafeContext(dict):
+    def __missing__(self, key):
+        return ""
+
+
+def _format_value(value: Optional[str], context: dict) -> str:
+    if not value:
+        return ""
+    try:
+        return value.format_map(_SafeContext(context))
+    except Exception:  # pylint: disable=broad-except
+        return value or ""
+
+
+def build_recipient_snapshot(message: IncidentMessage) -> List[Dict[str, Optional[str]]]:
+    snapshot: List[Dict[str, Optional[str]]] = []
+    serialized_lists = list(message.distribution_lists.all())
+    if message.distribution_list and all(dl.id != message.distribution_list.id for dl in serialized_lists):
+        serialized_lists.append(message.distribution_list)
+    for dl in serialized_lists:
+        if not dl:
+            continue
+        snapshot.append(
+            {
+                "type": "distribution_list",
+                "id": dl.id,
+                "graph_id": dl.external_id,
+                "name": dl.name,
+                "email": dl.email,
+            }
+        )
+    for email in message.extra_recipients or []:
+        snapshot.append({"type": "one_off", "email": email})
+    return snapshot
 
 
 def _collect_recipients(message: IncidentMessage) -> List[str]:
@@ -65,11 +100,26 @@ def _build_notes_blocks(raw_body: str) -> Tuple[str, str]:
     return text, html
 
 
-def build_incident_message_bodies(message: IncidentMessage, raw_body: str = "") -> Tuple[str, str]:
-    """Return a tuple of (text_body, html_body) using the configured template."""
-    template = TEMPLATE_LOOKUP.get(message.template_type)
+def _render_template(template: dict, context: dict) -> Tuple[str, Optional[str]]:
+    text_template = template.get("body_text") or template.get("body") or ""
+    html_template = template.get("body_html") or template.get("html_body")
+    text_body = _format_value(text_template, context) if text_template else ""
+    html_body = _format_value(html_template, context) if html_template else None
+    if not text_template:
+        text_body = context.get("custom_notes") or ""
+    if not text_body and html_body:
+        text_body = strip_tags(html_body)
+    return text_body.strip(), html_body
+
+
+def build_incident_message_bodies(
+    message: IncidentMessage, raw_body: str = ""
+) -> Tuple[str, Optional[str], Optional[int]]:
+    """Return a tuple of (text_body, html_body, template_version) using the configured template."""
+    template = get_template_data(message.template_type)
     if not template:
-        return raw_body or message.body or "", None
+        fallback_body = raw_body or message.body or ""
+        return fallback_body, None, None
     incident = message.incident
     next_update = message.next_communication_time or incident.next_communication_time
     notes_text, notes_html = _build_notes_blocks(raw_body)
@@ -88,18 +138,24 @@ def build_incident_message_bodies(message: IncidentMessage, raw_body: str = "") 
         "custom_notes": notes_text,
         "custom_notes_html": notes_html,
     }
-    text_template = template.get("body") or ""
-    html_template = template.get("html_body")
-    text_body = text_template.format(**context)
-    if html_template:
-        html_body = html_template.format(**context)
-    else:
-        html_body = None
-    if not text_template:
+    text_body, html_body = _render_template(template, context)
+    if not text_body:
         text_body = raw_body or message.body or ""
-    if not text_body and html_body:
-        text_body = strip_tags(html_body)
-    return text_body.strip(), html_body
+    return text_body.strip(), html_body, template.get("version")
+
+
+def render_template_preview(template_key: str, context: dict) -> Optional[Dict[str, Optional[str]]]:
+    template = get_template_data(template_key)
+    if not template:
+        return None
+    text_body, html_body = _render_template(template, context)
+    subject = _format_value(template.get("subject"), context)
+    return {
+        "subject": subject,
+        "body": text_body,
+        "html": html_body,
+        "version": template.get("version"),
+    }
 
 
 def deliver_incident_message(message: IncidentMessage) -> IncidentMessage:

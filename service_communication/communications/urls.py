@@ -6,6 +6,7 @@ from .views import (
     IncidentViewSet,
     IncidentMessageViewSet,
     TemplatesView,
+    TemplatePreviewView,
     DashboardSummaryView,
     LoginView,
     RefreshView,
@@ -24,6 +25,11 @@ urlpatterns = [
     path("auth/refresh/", RefreshView.as_view(), name="api-refresh"),
     path("auth/session-login/", SessionLoginView.as_view(), name="session-login"),
     path("templates/", TemplatesView.as_view(), name="templates"),
+    path(
+        "templates/<str:template_key>/preview/",
+        TemplatePreviewView.as_view(),
+        name="template-preview",
+    ),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
     path(
         "directory/distribution-lists/",

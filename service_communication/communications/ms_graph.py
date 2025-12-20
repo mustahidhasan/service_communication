@@ -70,7 +70,11 @@ def fetch_directory_lists(search: Optional[str] = None, limit: int = 30) -> List
     }
     if search:
         sanitized = search.replace("'", "''")
-        params["$filter"] += f" and startsWith(displayName,'{sanitized}')"
+        params["$filter"] += (
+            f" and (startsWith(displayName,'{sanitized}') "
+            f"or startsWith(mailNickname,'{sanitized}') "
+            f"or startsWith(mail,'{sanitized}'))"
+        )
     response = requests.get(
         f"{GRAPH_BASE_URL}/groups",
         headers=_build_headers(),
