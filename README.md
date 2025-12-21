@@ -150,12 +150,13 @@ The refreshed stack ships a purpose-built incident communications workflow:
 
 ## 9 Microsoft Graph distribution lists
 
-* Manual/custom DL creation has been removed. Lists are sourced directly from Microsoft Entra ID via the Graph API.
-* Required environment variables: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`. The app requests `Group.Read.All` to search distribution groups.
+* Manual/custom DL creation has been removed. Lists are sourced directly from Microsoft Entra ID via the Graph API and attached to individual incidents without any intermediate “import” step.
+* Required environment variables: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`. The app requests `Group.Read.All` _and_ `Directory.Read.All` to discover distribution groups by id, email, or display name.
 * UI updates:
-  * Inline AD search for incident creation, message sending, and the dedicated "Edit recipients" modal (no more modal pop-ups or scrolling).
+  * Inline Microsoft 365 search for incident creation and the dedicated "Edit recipients" modal (message composer consumes the stored incident defaults).
   * Users can add optional one-off recipients; selections persist per incident and are re-used for future updates.
-* Storage/audit rules: only the Graph object id, display name, and email are stored for lists. Recipient snapshots (including HTML/text bodies) are captured per message.
+  * Editing recipients jumps directly into the editor without extra scrolling; leaving the selection empty when sending/closing reuses the saved defaults.
+* Storage/audit rules: only the Graph object id, display name, and email snapshot are stored per incident. Recipient snapshots (including HTML/text bodies) are captured per message, and Microsoft Graph is queried at send time to ensure the DL still exists.
 
 ## 10 Email templates
 
@@ -212,6 +213,7 @@ The refreshed stack ships a purpose-built incident communications workflow:
 The Microsoft Graph integration (used for searching and importing distribution lists) requires an Azure AD application with the following delegated/application permissions:
 
 * `Group.Read.All` – to discover mail-enabled security and distribution groups.
+* `Directory.Read.All` – to resolve distribution list metadata by id/email before each send.
 
 Configure `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` so the backend can obtain an application token via the client credential flow. No group membership data is persisted; only the Graph object id, name snapshot, and email are stored per distribution list.
 

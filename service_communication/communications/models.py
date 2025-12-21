@@ -1,7 +1,6 @@
 import uuid
 from django.db import models
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from django.utils.text import slugify
 
 User = get_user_model()
@@ -45,39 +44,6 @@ class TeamMembership(models.Model):
 
     def __str__(self):
         return f"{self.user} -> {self.team} ({self.role})"
-
-
-class DistributionList(models.Model):
-    class Source(models.TextChoices):
-        CUSTOM = "custom", "Custom"
-        DIRECTORY = "directory", "Active Directory"
-
-    name = models.CharField(max_length=150)
-    description = models.TextField(blank=True)
-    source = models.CharField(
-        max_length=32, choices=Source.choices, default=Source.DIRECTORY, db_index=True
-    )
-    external_id = models.CharField(max_length=255, unique=True, blank=True, null=True)
-    email = models.EmailField(blank=True)
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="distribution_lists_created",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ("name",)
-
-    @property
-    def is_directory_managed(self):
-        return self.source == self.Source.DIRECTORY
-
-    def __str__(self):
-        suffix = f" ({self.email})" if self.email else ""
-        return f"{self.name}{suffix}"
 
 
 class EmailTemplate(models.Model):
@@ -146,18 +112,6 @@ class Incident(models.Model):
         max_length=20, choices=TemplateType.choices, default=TemplateType.INCIDENT
     )
     impact = models.TextField(blank=True)
-    primary_distribution_list = models.ForeignKey(
-        DistributionList,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="primary_incidents",
-    )
-    distribution_lists = models.ManyToManyField(
-        DistributionList,
-        related_name="incidents",
-        blank=True,
-    )
     default_extra_recipients = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="incidents_created"
@@ -188,22 +142,33 @@ def attachment_upload_path(instance, filename):
     return f"incident_attachments/{incident_id}/{unique_name}-{filename}"
 
 
+class IncidentDistributionList(models.Model):
+    incident = models.ForeignKey(
+        Incident, on_delete=models.CASCADE, related_name="distribution_lists"
+    )
+    graph_id = models.CharField(max_length=255)
+    display_name = models.CharField(max_length=200)
+    email = models.EmailField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("incident", "graph_id")
+        ordering = ("display_name",)
+
+    def __str__(self):
+        return f"{self.display_name} ({self.email})"
+
+
 class IncidentMessage(models.Model):
     incident = models.ForeignKey(Incident, on_delete=models.CASCADE, related_name="messages")
     author = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="incident_messages"
     )
-    distribution_list = models.ForeignKey(
-        DistributionList,
-        on_delete=models.SET_NULL,
-        null=True,
+    distribution_lists = models.ManyToManyField(
+        "IncidentDistributionList",
         blank=True,
         related_name="incident_messages",
-    )
-    distribution_lists = models.ManyToManyField(
-        DistributionList,
-        blank=True,
-        related_name="incident_messages_multi",
     )
     point_of_contact = models.CharField(max_length=200, blank=True)
     problem_description = models.TextField(blank=True)

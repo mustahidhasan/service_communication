@@ -2,7 +2,6 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     TeamViewSet,
-    DistributionListViewSet,
     IncidentViewSet,
     IncidentMessageViewSet,
     TemplatesView,
@@ -16,7 +15,6 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r"teams", TeamViewSet, basename="team")
-router.register(r"distribution-lists", DistributionListViewSet, basename="distribution-list")
 router.register(r"incidents", IncidentViewSet, basename="incident")
 router.register(r"messages", IncidentMessageViewSet, basename="incident-message")
 

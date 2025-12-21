@@ -14,8 +14,8 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (
     Team,
     TeamMembership,
-    DistributionList,
     Incident,
+    IncidentDistributionList,
     IncidentMessage,
     MessageAttachment,
     EmailTemplate,
@@ -73,6 +73,82 @@ class EmailListField(serializers.ListField):
         normalized = _flatten_email_values(data)
         validated = super().to_internal_value(normalized)
         return _dedupe_preserve_order(validated)
+
+
+class IncidentDistributionListField(serializers.Field):
+    default_error_messages = {
+        "invalid_type": "Distribution lists must be a list of objects.",
+        "missing_graph_id": "Each distribution list must include a graph_id.",
+        "missing_email": "Each distribution list must include an email address.",
+    }
+
+    def to_representation(self, value):
+        if hasattr(value, "all"):
+            entries = value.all()
+        else:
+            entries = value or []
+        return [
+            {
+                "graph_id": entry.graph_id,
+                "display_name": entry.display_name,
+                "email": entry.email,
+            }
+            for entry in entries
+        ]
+
+    def to_internal_value(self, data):
+        if data is empty:
+            return []
+        if not isinstance(data, list):
+            self.fail("invalid_type")
+        normalized = []
+        for item in data:
+            if not isinstance(item, dict):
+                self.fail("invalid_type")
+            graph_id = (item.get("graph_id") or item.get("id") or "").strip()
+            display_name = (item.get("display_name") or item.get("name") or "").strip()
+            email = (item.get("email") or item.get("mail") or "").strip()
+            if not graph_id:
+                self.fail("missing_graph_id")
+            if not email:
+                self.fail("missing_email")
+            normalized.append(
+                {
+                    "graph_id": graph_id,
+                    "display_name": display_name or email,
+                    "email": email,
+                }
+            )
+        return normalized
+
+
+class DistributionGraphIdListField(serializers.ListField):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("child", serializers.CharField())
+        kwargs.setdefault("allow_empty", True)
+        kwargs.setdefault("required", False)
+        super().__init__(**kwargs)
+
+    def to_representation(self, value):
+        if hasattr(value, "all"):
+            items = value.all()
+        else:
+            items = value or []
+        return [getattr(item, "graph_id", item) for item in items]
+
+    def to_internal_value(self, data):
+        values = super().to_internal_value(data)
+        deduped = []
+        seen = set()
+        for value in values:
+            normalized = value.strip()
+            if not normalized:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(normalized)
+        return deduped
 
 
 class TeamMembershipSerializer(serializers.ModelSerializer):
@@ -146,55 +222,6 @@ class TeamSerializer(serializers.ModelSerializer):
         return creator.email or getattr(creator, "username", None)
 
 
-class DistributionListSerializer(serializers.ModelSerializer):
-    created_by = serializers.IntegerField(source="created_by_id", read_only=True)
-    created_by_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = DistributionList
-        fields = [
-            "id",
-            "name",
-            "description",
-            "source",
-            "external_id",
-            "email",
-            "created_at",
-            "updated_at",
-            "created_by",
-            "created_by_name",
-        ]
-        read_only_fields = [
-            "id",
-            "source",
-            "external_id",
-            "email",
-            "created_at",
-            "updated_at",
-            "created_by",
-            "created_by_name",
-        ]
-
-    def create(self, validated_data):
-        request = self.context.get("request")
-        validated_data["created_by"] = request.user if request else None
-        return DistributionList.objects.create(**validated_data)
-
-    def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
-
-    def get_created_by_name(self, obj):
-        creator = getattr(obj, "created_by", None)
-        if not creator:
-            return None
-        full_name = creator.get_full_name()
-        if full_name:
-            return full_name
-        return creator.email or getattr(creator, "username", None)
-
 class MessageAttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = MessageAttachment
@@ -204,15 +231,10 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
 
 class IncidentSerializer(serializers.ModelSerializer):
     team_name = serializers.CharField(source="team.name", read_only=True)
-    primary_distribution_list_name = serializers.CharField(
-        source="primary_distribution_list.name", read_only=True
-    )
     created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True)
     created_by_email = serializers.CharField(source="created_by.email", read_only=True)
     is_closed = serializers.BooleanField(read_only=True)
-    distribution_lists = serializers.PrimaryKeyRelatedField(
-        queryset=DistributionList.objects.all(), many=True, required=False
-    )
+    distribution_lists = IncidentDistributionListField(required=False)
     default_extra_recipients = EmailListField()
     messages_count = serializers.SerializerMethodField()
 
@@ -224,13 +246,45 @@ class IncidentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context.get("request")
+        distribution_entries = validated_data.pop("distribution_lists", [])
         if request:
             validated_data["created_by"] = request.user
-        distribution_lists = validated_data.get("distribution_lists") or []
-        primary = validated_data.get("primary_distribution_list")
-        if not primary and distribution_lists:
-            validated_data["primary_distribution_list"] = distribution_lists[0]
-        return super().create(validated_data)
+        incident = Incident.objects.create(**validated_data)
+        self._sync_distribution_lists(incident, distribution_entries)
+        return incident
+
+    def update(self, instance, validated_data):
+        distribution_entries = validated_data.pop("distribution_lists", None)
+        incident = super().update(instance, validated_data)
+        if distribution_entries is not None:
+            self._sync_distribution_lists(incident, distribution_entries)
+        return incident
+
+    def _sync_distribution_lists(self, incident, entries):
+        existing = {item.graph_id: item for item in incident.distribution_lists.all()}
+        seen = set()
+        for payload in entries:
+            graph_id = payload["graph_id"]
+            seen.add(graph_id)
+            current = existing.get(graph_id)
+            if current:
+                updates = []
+                if current.display_name != payload["display_name"]:
+                    current.display_name = payload["display_name"]
+                    updates.append("display_name")
+                if current.email != payload["email"]:
+                    current.email = payload["email"]
+                    updates.append("email")
+                if updates:
+                    current.save(update_fields=updates)
+            else:
+                IncidentDistributionList.objects.create(
+                    incident=incident,
+                    graph_id=graph_id,
+                    display_name=payload["display_name"],
+                    email=payload["email"],
+                )
+        incident.distribution_lists.exclude(graph_id__in=seen).delete()
 
     def validate_affected_regions(self, value):
         if value is None:
@@ -260,8 +314,6 @@ class IncidentSerializer(serializers.ModelSerializer):
             "severity",
             "status",
             "template_type",
-            "primary_distribution_list",
-            "primary_distribution_list_name",
             "distribution_lists",
             "default_extra_recipients",
             "created_by",
@@ -278,7 +330,6 @@ class IncidentSerializer(serializers.ModelSerializer):
             "id",
             "reference_id",
             "team_name",
-            "primary_distribution_list_name",
             "created_by",
             "created_by_name",
             "created_by_email",
@@ -290,7 +341,6 @@ class IncidentSerializer(serializers.ModelSerializer):
             "messages_count",
         ]
         extra_kwargs = {
-            "primary_distribution_list": {"allow_null": True, "required": False},
             "inc_number": {"allow_blank": False, "required": True},
             "problem_description": {"allow_blank": False, "required": True},
             "workaround": {"allow_blank": False, "required": True},
@@ -332,9 +382,7 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
     author_name = serializers.CharField(source="author.get_full_name", read_only=True)
     extra_recipients = EmailListField()
-    distribution_lists = serializers.PrimaryKeyRelatedField(
-        queryset=DistributionList.objects.all(), many=True, required=False
-    )
+    distribution_lists = DistributionGraphIdListField()
 
     class Meta:
         model = IncidentMessage
@@ -344,7 +392,6 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
             "incident_reference",
             "author",
             "author_name",
-            "distribution_list",
             "distribution_lists",
             "subject",
             "body",
@@ -415,12 +462,15 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
                 file=file,
                 original_name=getattr(file, "name", ""),
             )
-        if distribution_lists:
-            message.distribution_lists.set(distribution_lists)
-        elif incident.distribution_lists.exists():
+        selected_lists = incident.distribution_lists.filter(graph_id__in=distribution_lists)
+        if distribution_lists and selected_lists.count() != len(distribution_lists):
+            raise serializers.ValidationError(
+                {"distribution_lists": "Invalid distribution list selection for this incident."}
+            )
+        if selected_lists.exists():
+            message.distribution_lists.set(selected_lists)
+        else:
             message.distribution_lists.set(incident.distribution_lists.all())
-        elif message.distribution_list:
-            message.distribution_lists.add(message.distribution_list)
         text_body, html_body, template_version = build_incident_message_bodies(message, raw_body)
         update_fields = []
         if text_body:
@@ -443,12 +493,7 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
 class IncidentCloseSerializer(serializers.Serializer):
     final_subject = serializers.CharField()
     final_body = serializers.CharField()
-    distribution_list = serializers.PrimaryKeyRelatedField(
-        queryset=DistributionList.objects.all(), allow_null=True, required=False
-    )
-    distribution_lists = serializers.PrimaryKeyRelatedField(
-        queryset=DistributionList.objects.all(), many=True, required=False
-    )
+    distribution_lists = DistributionGraphIdListField()
     template_type = serializers.ChoiceField(
         choices=Incident.TemplateType.choices, default=Incident.TemplateType.INCIDENT
     )
