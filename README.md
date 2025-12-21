@@ -163,7 +163,63 @@ The refreshed stack ships a purpose-built incident communications workflow:
 * `/api/service-communications/templates/` lists available templates. `/api/service-communications/templates/<template_key>/preview/` renders the HTML/text preview given form context.
 * Templates can be managed in the Django admin under **Communications → Email templates** for downstream iteration without code changes.
 
-## 11 Database & migrations
+## 11 Local development & Graph requirements
+
+### Backend + frontend
+
+1. Create a virtual environment and install dependencies:
+
+   ```bash
+   cd service_communication
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. Provide a `.env` file (or export environment variables) with at least:
+
+   ```
+   DJANGO_SECRET_KEY=dev-secret
+   DEBUG=True
+   ALLOWED_HOSTS=localhost,127.0.0.1
+   HOST_URL=http://localhost:3000
+   AZURE_TENANT_ID=<tenant-id>
+   AZURE_CLIENT_ID=<app-id>
+   AZURE_CLIENT_SECRET=<client-secret>
+   ```
+
+3. Run the database migrations and start the Django API (defaults to port `8000`):
+
+   ```bash
+   python manage.py migrate
+   python manage.py runserver
+   ```
+
+4. Start the React SPA:
+
+   ```bash
+   cd frontend
+   npm install
+   REACT_APP_API_BASE_URL=http://localhost:8000/api \
+   REACT_APP_APP_SCOPE=combined \
+   npm start
+   ```
+
+   `REACT_APP_APP_SCOPE` can be set to `service`, `network`, or `combined` to launch the standalone Service Communications console, Network Operations console, or both modules respectively.
+
+### Microsoft Graph permissions
+
+The Microsoft Graph integration (used for searching and importing distribution lists) requires an Azure AD application with the following delegated/application permissions:
+
+* `Group.Read.All` – to discover mail-enabled security and distribution groups.
+
+Configure `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` so the backend can obtain an application token via the client credential flow. No group membership data is persisted; only the Graph object id, name snapshot, and email are stored per distribution list.
+
+### Email template management
+
+Email templates are versioned records in the `EmailTemplate` model and exposed via `/api/service-communications/templates/`. Use the Django admin (**Communications → Email templates**) to add or update HTML/text bodies without redeploying. The helper in `communications/template_loader.py` caches templates per key and automatically invalidates cache entries whenever a template is saved or deleted. Default templates also live in `communications/constants.py` in case the database has not been seeded yet.
+
+## 12 Database & migrations
 
 * Apply the new schema before running the app:
 
