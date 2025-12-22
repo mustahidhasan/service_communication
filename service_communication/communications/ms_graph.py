@@ -99,3 +99,27 @@ def fetch_directory_list_by_id(object_id: str) -> Optional[Dict]:
         return None
     response.raise_for_status()
     return response.json()
+
+
+def fetch_directory_list_by_email(email: str) -> Optional[Dict]:
+    if not _has_graph_config() or not email:
+        return None
+    sanitized = email.replace("'", "''")
+    params = {
+        "$top": 1,
+        "$select": "id,displayName,mail,description,mailNickname",
+        "$filter": (
+            f"mailEnabled eq true and securityEnabled eq false and "
+            f"mail eq '{sanitized}'"
+        ),
+    }
+    response = requests.get(
+        f"{GRAPH_BASE_URL}/groups",
+        headers=_build_headers(),
+        params=params,
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    values = payload.get("value") or []
+    return values[0] if values else None

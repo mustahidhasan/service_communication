@@ -1,27 +1,20 @@
 import logging
+import requests
 
 from django.db.models import Q, Count
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status, mixins
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import (
-    Team,
-    TeamMembership,
-    DistributionList,
-    Incident,
-    IncidentMessage,
-    EmailTemplate,
-)
+from .models import Team, TeamMembership, Incident, IncidentMessage, EmailTemplate
 from .serializers import (
     TeamSerializer,
-    DistributionListSerializer,
     IncidentSerializer,
     IncidentMessageSerializer,
     AnnouncementTemplateSerializer,
@@ -40,6 +33,7 @@ from .services import (
 from .ms_graph import (
     fetch_directory_lists,
     fetch_directory_list_by_id,
+    fetch_directory_list_by_email,
     ActiveDirectoryConfigurationError,
 )
 
@@ -67,7 +61,6 @@ class SessionLoginView(APIView):
             "access": str(refresh.access_token),
             "refresh": str(refresh),
             "user": {
-                "id": request.user.id,
                 "username": request.user.username,
                 "email": request.user.email,
                 "first_name": request.user.first_name,
@@ -83,6 +76,7 @@ class SessionLoginView(APIView):
 class TeamViewSet(viewsets.ModelViewSet):
     serializer_class = TeamSerializer
     permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "public_id"
 
     def get_queryset(self):
         user = self.request.user
@@ -122,28 +116,32 @@ class TeamViewSet(viewsets.ModelViewSet):
         raise PermissionDenied("You do not have permission to modify this team.")
 
 
-class DistributionListViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = DistributionListSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    http_method_names = ["get", "head", "options"]
-
-    def get_queryset(self):
-        queryset = DistributionList.objects.all().order_by("name")
-        search = self.request.query_params.get("search")
-        if search:
-            queryset = queryset.filter(Q(name__icontains=search) | Q(email__icontains=search))
-        return queryset
-
-
 class DirectoryDistributionListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        search = request.query_params.get("search") or ""
+        search = (request.query_params.get("search") or "").strip()
+        email = (request.query_params.get("email") or "").strip()
         try:
-            groups = fetch_directory_lists(search=search)
+            if email:
+                group = fetch_directory_list_by_email(email)
+                groups = [group] if group else []
+            else:
+                groups = fetch_directory_lists(search=search)
         except ActiveDirectoryConfigurationError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except requests.exceptions.HTTPError as exc:  # Graph returned a specific status
+            response = getattr(exc, "response", None)
+            status_code = response.status_code if response is not None else status.HTTP_502_BAD_GATEWAY
+            detail = "Microsoft Graph rejected the request."
+            if status_code in (401, 403):
+                detail = (
+                    "Microsoft Graph returned a permission error. "
+                    "Verify that the Azure AD app registration has Group.Read.All and Directory.Read.All "
+                    "application permissions with admin consent."
+                )
+            logger.warning("Microsoft Graph returned %s while searching groups: %s", status_code, exc)
+            return Response({"detail": detail}, status=status_code)
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Failed to fetch Microsoft 365 groups: %s", exc)
             return Response(
@@ -165,60 +163,25 @@ class DirectoryDistributionListView(APIView):
             )
         return Response(data)
 
-    def post(self, request):
-        object_id = request.data.get("id") or request.data.get("object_id")
-        if not object_id:
-            return Response({"detail": "Directory group id is required."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            group = fetch_directory_list_by_id(object_id)
-        except ActiveDirectoryConfigurationError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.exception("Failed to import directory list: %s", exc)
-            return Response(
-                {"detail": "Unable to import the requested distribution list."},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-        if not group or not group.get("mail"):
-            return Response(
-                {"detail": "Distribution list email address was not found."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        defaults = {
-            "name": group.get("displayName") or group.get("mailNickname") or group.get("mail"),
-            "description": group.get("description") or "",
-            "email": group.get("mail"),
-            "created_by": request.user,
-            "source": DistributionList.Source.DIRECTORY,
-        }
-        distribution_list, created = DistributionList.objects.update_or_create(
-            external_id=group.get("id"),
-            defaults=defaults,
-        )
-        if created and not distribution_list.created_by:
-            distribution_list.created_by = request.user
-            distribution_list.save(update_fields=["created_by"])
-        serializer = DistributionListSerializer(distribution_list, context={"request": request})
-        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-
 
 class IncidentViewSet(viewsets.ModelViewSet):
     serializer_class = IncidentSerializer
     permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "reference_id"
 
     def get_queryset(self):
-        qs = Incident.objects.select_related(
-            "team",
-            "primary_distribution_list",
-            "created_by",
-            "closed_by",
-        ).annotate(message_total=Count("messages"))
+        qs = (
+            Incident.objects.select_related(
+                "team",
+                "created_by",
+                "closed_by",
+            )
+            .prefetch_related("distribution_lists")
+            .annotate(message_total=Count("messages"))
+        )
         team_id = self.request.query_params.get("team")
         if team_id:
-            try:
-                qs = qs.filter(team_id=int(team_id))
-            except ValueError:
-                pass
+            qs = qs.filter(team__public_id=team_id)
         user = self.request.user
         if user_is_global_team_admin(user):
             return qs
@@ -252,11 +215,25 @@ class IncidentViewSet(viewsets.ModelViewSet):
         incident.save(update_fields=["status", "closed_at", "closed_by"])
 
         data = serializer.validated_data
-        distribution_list = data.get("distribution_list") or incident.primary_distribution_list
+        requested_graph_ids = data.get("distribution_lists") or []
+        incident_lists = incident.distribution_lists.all()
+        if requested_graph_ids:
+            selected_lists = incident_lists.filter(graph_id__in=requested_graph_ids)
+            if selected_lists.count() != len(requested_graph_ids):
+                return Response(
+                    {"detail": "One or more distribution lists are invalid for this incident."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            selected_lists = incident_lists
+        if not selected_lists.exists():
+            return Response(
+                {"detail": "No distribution lists are configured for this incident."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         message = IncidentMessage.objects.create(
             incident=incident,
             author=request.user,
-            distribution_list=distribution_list,
             subject=data["final_subject"],
             body=data["final_body"],
             template_type=data.get("template_type", incident.template_type),
@@ -271,12 +248,7 @@ class IncidentViewSet(viewsets.ModelViewSet):
             workaround=data.get("workaround") or incident.workaround,
             next_communication_time=data.get("next_communication_time") or incident.next_communication_time,
         )
-        if data.get("distribution_lists"):
-            message.distribution_lists.set(data["distribution_lists"])
-        elif incident.distribution_lists.exists():
-            message.distribution_lists.set(incident.distribution_lists.all())
-        elif distribution_list:
-            message.distribution_lists.add(distribution_list)
+        message.distribution_lists.set(selected_lists)
         text_body, html_body, template_version = build_incident_message_bodies(
             message, data.get("final_body", "")
         )
@@ -306,12 +278,12 @@ class IncidentMessageViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, vie
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        queryset = IncidentMessage.objects.select_related(
-            "incident", "author", "distribution_list"
-        ).prefetch_related("attachments", "distribution_lists")
-        incident_id = self.request.query_params.get("incident")
-        if incident_id:
-            queryset = queryset.filter(incident_id=incident_id)
+        queryset = IncidentMessage.objects.select_related("incident", "author").prefetch_related(
+            "attachments", "distribution_lists"
+        )
+        incident_reference = self.request.query_params.get("incident")
+        if incident_reference:
+            queryset = queryset.filter(incident__reference_id=incident_reference)
         user = self.request.user
         if user_is_global_team_admin(user):
             return queryset
@@ -323,7 +295,11 @@ class IncidentMessageViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, vie
         if not user_in_team(user, incident.team):
             raise PermissionDenied("You are not assigned to this team.")
         message = serializer.save()
-        deliver_incident_message(message)
+        try:
+            deliver_incident_message(message)
+        except ValueError as exc:
+            message.delete()
+            raise ValidationError({"distribution_lists": str(exc)}) from exc
 
 
 class TemplatesView(APIView):
@@ -368,7 +344,7 @@ class DashboardSummaryView(APIView):
             "open_incident_count": open_incidents.count(),
             "recent_messages": [
                 {
-                    "id": message.id,
+                    "id": str(message.public_id),
                     "incident_reference": message.incident.reference_id,
                     "incident_inc_number": message.incident.inc_number,
                     "subject": message.subject,

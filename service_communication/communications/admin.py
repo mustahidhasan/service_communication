@@ -2,8 +2,8 @@ from django.contrib import admin
 from .models import (
     Team,
     TeamMembership,
-    DistributionList,
     Incident,
+    IncidentDistributionList,
     IncidentMessage,
     MessageAttachment,
     EmailTemplate,
@@ -21,13 +21,6 @@ class TeamMembershipAdmin(admin.ModelAdmin):
     list_display = ("user", "team", "role", "created_at")
     list_filter = ("role", "team")
     search_fields = ("user__username", "user__email", "team__name")
-
-
-@admin.register(DistributionList)
-class DistributionListAdmin(admin.ModelAdmin):
-    list_display = ("name", "email", "external_id", "source", "created_at")
-    list_filter = ("source",)
-    search_fields = ("name", "email", "external_id")
 
 
 @admin.register(EmailTemplate)
@@ -62,14 +55,18 @@ class IncidentAdmin(admin.ModelAdmin):
     )
     list_filter = ("team", "status", "severity", "template_type", "incident_type")
     search_fields = ("reference_id", "title", "inc_number")
-    filter_horizontal = ("distribution_lists",)
     inlines = [IncidentMessageInline]
+
+
+@admin.register(IncidentDistributionList)
+class IncidentDistributionListAdmin(admin.ModelAdmin):
+    list_display = ("incident", "display_name", "email", "graph_id", "created_at")
+    search_fields = ("display_name", "email", "graph_id", "incident__inc_number")
 
 
 @admin.register(IncidentMessage)
 class IncidentMessageAdmin(admin.ModelAdmin):
     list_display = ("incident", "subject", "template_type", "point_of_contact", "created_at")
-    list_filter = ("template_type", "distribution_lists")
+    list_filter = ("template_type",)
     search_fields = ("subject", "incident__reference_id")
     inlines = [MessageAttachmentInline]
-    filter_horizontal = ("distribution_lists",)

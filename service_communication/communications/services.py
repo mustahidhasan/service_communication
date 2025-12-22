@@ -3,11 +3,12 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 from django.utils.html import escape, strip_tags
-from .models import IncidentMessage, DistributionList
+from .models import IncidentMessage, IncidentDistributionList
 from .template_loader import get_template_data
+from .ms_graph import ActiveDirectoryConfigurationError, fetch_directory_list_by_id
 
 
-def _list_recipients(list_obj: DistributionList) -> List[str]:
+def _list_recipients(list_obj: IncidentDistributionList) -> List[str]:
     if list_obj.email:
         return [list_obj.email]
     return []
@@ -29,18 +30,14 @@ def _format_value(value: Optional[str], context: dict) -> str:
 
 def build_recipient_snapshot(message: IncidentMessage) -> List[Dict[str, Optional[str]]]:
     snapshot: List[Dict[str, Optional[str]]] = []
-    serialized_lists = list(message.distribution_lists.all())
-    if message.distribution_list and all(dl.id != message.distribution_list.id for dl in serialized_lists):
-        serialized_lists.append(message.distribution_list)
-    for dl in serialized_lists:
+    for dl in message.distribution_lists.all():
         if not dl:
             continue
         snapshot.append(
             {
                 "type": "distribution_list",
-                "id": dl.id,
-                "graph_id": dl.external_id,
-                "name": dl.name,
+                "graph_id": dl.graph_id,
+                "name": dl.display_name,
                 "email": dl.email,
             }
         )
@@ -51,8 +48,6 @@ def build_recipient_snapshot(message: IncidentMessage) -> List[Dict[str, Optiona
 
 def _collect_recipients(message: IncidentMessage) -> List[str]:
     recipients = []
-    if message.distribution_list:
-        recipients.extend(_list_recipients(message.distribution_list))
     if message.distribution_lists.exists():
         for dl in message.distribution_lists.all():
             recipients.extend(_list_recipients(dl))
@@ -61,8 +56,6 @@ def _collect_recipients(message: IncidentMessage) -> List[str]:
         default_lists = message.incident.distribution_lists.all()
         for dl in default_lists:
             recipients.extend(_list_recipients(dl))
-        if not recipients and message.incident.primary_distribution_list:
-            recipients.extend(_list_recipients(message.incident.primary_distribution_list))
     if message.extra_recipients:
         recipients.extend([value.strip() for value in message.extra_recipients if value.strip()])
     # Deduplicate while preserving order
@@ -74,6 +67,24 @@ def _collect_recipients(message: IncidentMessage) -> List[str]:
             seen.add(normalized)
             ordered.append(email)
     return ordered
+
+
+def _verify_directory_lists_exist(graph_ids: List[str]) -> List[str]:
+    missing: List[str] = []
+    seen = set()
+    for graph_id in graph_ids:
+        if not graph_id or graph_id in seen:
+            continue
+        seen.add(graph_id)
+        try:
+            group = fetch_directory_list_by_id(graph_id)
+        except ActiveDirectoryConfigurationError:
+            raise
+        except Exception as exc:  # pylint: disable=broad-except
+            raise ValueError("Unable to verify distribution list with Microsoft Graph.") from exc
+        if not group:
+            missing.append(graph_id)
+    return missing
 
 
 def _format_datetime(value):
@@ -165,6 +176,16 @@ def deliver_incident_message(message: IncidentMessage) -> IncidentMessage:
         message.delivery_status = "skipped-no-recipients"
         message.save(update_fields=["delivery_status"])
         return message
+
+    graph_ids = [dl.graph_id for dl in message.distribution_lists.all()]
+    try:
+        missing = _verify_directory_lists_exist(graph_ids)
+    except ActiveDirectoryConfigurationError as exc:
+        raise ValueError(str(exc)) from exc
+    if missing:
+        raise ValueError(
+            "Distribution lists not found or access denied: " + ", ".join(sorted(missing))
+        )
 
     email = EmailMultiAlternatives(
         subject=message.subject,

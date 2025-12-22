@@ -74,7 +74,7 @@ function UserActivity({ apiBaseUrl, auth }) {
       <h3>Active Users ({activeUserCount})</h3>
       <ul className="active-user-list">
         {activeUsers.map((user) => (
-          <li key={user.id}>
+          <li key={user.email}>
             <strong>{user.name || 'N/A'}</strong> ({user.email})
           </li>
         ))}
@@ -84,7 +84,7 @@ function UserActivity({ apiBaseUrl, auth }) {
       <table className="activity-table">
         <thead>
           <tr>
-            <th>User ID</th>
+            <th>User</th>
             <th>Email</th>
             <th>Activity Type</th>
             <th>Timestamp</th>
@@ -95,7 +95,7 @@ function UserActivity({ apiBaseUrl, auth }) {
         <tbody>
           {activityLogs.map((log, index) => (
             <tr key={index}>
-              <td>{log.user_id}</td>
+              <td>{log.name || '—'}</td>
               <td>{log.email}</td>
               <td>{log.activity_type}</td>
               <td>{formatDateTimeIST(log.timestamp)}</td>

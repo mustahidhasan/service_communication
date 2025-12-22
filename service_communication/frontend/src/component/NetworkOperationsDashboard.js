@@ -144,7 +144,7 @@ function NetworkOperationsDashboard({ apiBaseUrl, rootApiBaseUrl, auth, setAuth 
           {activity.length ? (
             <ul className="activity-feed">
               {activity.map((entry, index) => (
-                <li key={`${entry.user_id}-${index}`}>
+                <li key={`${entry.email}-${index}`}>
                   <strong>{entry.email}</strong>
                   <small>{entry.activity_type}</small>
                 </li>

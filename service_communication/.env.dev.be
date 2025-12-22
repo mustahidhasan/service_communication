@@ -6,9 +6,9 @@ DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1,backend,backend-dev,service_communication-backend-dev
 
 # Azure SSO (replace with valid dev credentials)
-AZURE_TENANT_ID=20873f24-587c-427a-8b39-20b75349b61d
-AZURE_CLIENT_ID=f682b7c8-8047-4b0b-91de-f6735855f32d
-AZURE_CLIENT_SECRET=e1~8Q~6pHm06y1Zoeu2t6U2b0ICe_rVF2WSMYaaQ
+AZURE_TENANT_ID=05ceb559-e89f-4e43-a141-34567baa8838
+AZURE_CLIENT_ID=2674c689-eca2-4af7-8a21-02a6fccbc04d
+AZURE_CLIENT_SECRET=CV58Q~pYv1LDEv51Ou0emZ~rf_EmLdWtpLCRsbqt
 
 # Redirect URIs for local development
 AZURE_REDIRECT_URI=http://localhost:3000/oauth2/callback/
