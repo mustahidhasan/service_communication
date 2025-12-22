@@ -7,6 +7,7 @@ User = get_user_model()
 
 
 class Team(models.Model):
+    public_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     name = models.CharField(max_length=150, unique=True)
     slug = models.SlugField(max_length=160, unique=True, blank=True)
     description = models.TextField(blank=True)
@@ -137,9 +138,9 @@ class Incident(models.Model):
 
 
 def attachment_upload_path(instance, filename):
-    incident_id = instance.message.incident_id
     unique_name = uuid.uuid4().hex
-    return f"incident_attachments/{incident_id}/{unique_name}-{filename}"
+    incident_ref = instance.message.incident.reference_id
+    return f"incident_attachments/{incident_ref}/{unique_name}-{filename}"
 
 
 class IncidentDistributionList(models.Model):
@@ -161,6 +162,7 @@ class IncidentDistributionList(models.Model):
 
 
 class IncidentMessage(models.Model):
+    public_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     incident = models.ForeignKey(Incident, on_delete=models.CASCADE, related_name="messages")
     author = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="incident_messages"
@@ -196,6 +198,7 @@ class IncidentMessage(models.Model):
 
 
 class MessageAttachment(models.Model):
+    public_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     message = models.ForeignKey(
         IncidentMessage, on_delete=models.CASCADE, related_name="attachments"
     )

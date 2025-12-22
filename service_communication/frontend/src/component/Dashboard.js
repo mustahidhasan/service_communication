@@ -194,8 +194,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
       try {
         const storedTeam = window.localStorage.getItem('scSelectedTeam');
         if (storedTeam) {
-          const parsedStored = Number(storedTeam);
-          return Number.isNaN(parsedStored) ? storedTeam : parsedStored;
+          return storedTeam;
         }
       } catch (err) {
         // ignore storage issues
@@ -203,8 +202,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     }
     const firstTeamId = auth?.teams?.[0]?.id;
     if (firstTeamId === undefined || firstTeamId === null) return null;
-    const parsed = Number(firstTeamId);
-    return Number.isNaN(parsed) ? firstTeamId : parsed;
+    return firstTeamId;
   });
   const [incidents, setIncidents] = useState([]);
   const [selectedIncident, setSelectedIncident] = useState(null);
@@ -332,8 +330,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
   const handleTeamFilterChange = useCallback(
     (event) => {
       const value = event.target.value;
-      const normalized = value ? Number(value) : null;
-      setSelectedTeam(Number.isNaN(normalized) ? null : normalized);
+      setSelectedTeam(value || null);
     },
     [setSelectedTeam]
   );
@@ -618,13 +615,13 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
       if (
         prevSelected !== null &&
         prevSelected !== undefined &&
-        normalized.some((team) => Number(team.id) === Number(prevSelected))
+        normalized.some((team) => team.id === prevSelected)
       ) {
         nextTeamSelection = prevSelected;
         return prevSelected;
       }
-      const fallback = normalized.length ? Number(normalized[0].id) : null;
-      const sanitized = fallback !== null && !Number.isNaN(fallback) ? fallback : null;
+      const fallback = normalized.length ? normalized[0].id : null;
+      const sanitized = fallback !== null ? fallback : null;
       nextTeamSelection = sanitized;
       return sanitized;
     });
@@ -839,7 +836,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
 
   const selectedTeamLabel = useMemo(() => {
     if (!selectedTeam) return '';
-    const found = (teams || []).find((team) => Number(team.id) === Number(selectedTeam));
+    const found = (teams || []).find((team) => team.id === selectedTeam);
     return found?.name || '';
   }, [teams, selectedTeam]);
 
@@ -1102,9 +1099,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     const incidentParam = params.get('incident');
     const panelParam = params.get('panel');
     if (incidentParam) {
-      const parsed = Number(incidentParam);
-      const normalized = Number.isNaN(parsed) ? incidentParam : parsed;
-      setSelectedIncident((prev) => (prev === normalized ? prev : normalized));
+      setSelectedIncident((prev) => (prev === incidentParam ? prev : incidentParam));
       setActiveSubNav('active');
       setForceTeamFromIncident(true);
     }
@@ -1278,8 +1273,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
       } else {
         const created = await apiRequest('/teams/', { method: 'POST', body: payload });
         if (created?.id) {
-          const createdId = Number(created.id);
-          setSelectedTeam(Number.isNaN(createdId) ? created.id : createdId);
+          setSelectedTeam(created.id);
         }
         showToast('Team created');
       }
@@ -1584,7 +1578,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                   value={selectedTeam || ''}
                   onChange={(e) => {
                     const value = e.target.value;
-                    setSelectedTeam(value ? Number(value) : null);
+                    setSelectedTeam(value || null);
                   }}
                 >
                   <option value="" disabled>

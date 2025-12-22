@@ -61,7 +61,6 @@ class SessionLoginView(APIView):
             "access": str(refresh.access_token),
             "refresh": str(refresh),
             "user": {
-                "id": request.user.id,
                 "username": request.user.username,
                 "email": request.user.email,
                 "first_name": request.user.first_name,
@@ -77,6 +76,7 @@ class SessionLoginView(APIView):
 class TeamViewSet(viewsets.ModelViewSet):
     serializer_class = TeamSerializer
     permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "public_id"
 
     def get_queryset(self):
         user = self.request.user
@@ -167,6 +167,7 @@ class DirectoryDistributionListView(APIView):
 class IncidentViewSet(viewsets.ModelViewSet):
     serializer_class = IncidentSerializer
     permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "reference_id"
 
     def get_queryset(self):
         qs = (
@@ -180,10 +181,7 @@ class IncidentViewSet(viewsets.ModelViewSet):
         )
         team_id = self.request.query_params.get("team")
         if team_id:
-            try:
-                qs = qs.filter(team_id=int(team_id))
-            except ValueError:
-                pass
+            qs = qs.filter(team__public_id=team_id)
         user = self.request.user
         if user_is_global_team_admin(user):
             return qs
@@ -283,9 +281,9 @@ class IncidentMessageViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, vie
         queryset = IncidentMessage.objects.select_related("incident", "author").prefetch_related(
             "attachments", "distribution_lists"
         )
-        incident_id = self.request.query_params.get("incident")
-        if incident_id:
-            queryset = queryset.filter(incident_id=incident_id)
+        incident_reference = self.request.query_params.get("incident")
+        if incident_reference:
+            queryset = queryset.filter(incident__reference_id=incident_reference)
         user = self.request.user
         if user_is_global_team_admin(user):
             return queryset
@@ -346,7 +344,7 @@ class DashboardSummaryView(APIView):
             "open_incident_count": open_incidents.count(),
             "recent_messages": [
                 {
-                    "id": message.id,
+                    "id": str(message.public_id),
                     "incident_reference": message.incident.reference_id,
                     "incident_inc_number": message.incident.inc_number,
                     "subject": message.subject,

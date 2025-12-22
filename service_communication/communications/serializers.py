@@ -162,8 +162,8 @@ class TeamMembershipSerializer(serializers.ModelSerializer):
 
 
 class TeamSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="public_id", read_only=True)
     membership_role = serializers.SerializerMethodField()
-    created_by = serializers.IntegerField(source="created_by_id", read_only=True)
     created_by_name = serializers.SerializerMethodField()
     can_manage = serializers.SerializerMethodField()
 
@@ -177,7 +177,6 @@ class TeamSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "membership_role",
-            "created_by",
             "created_by_name",
             "can_manage",
         ]
@@ -186,7 +185,6 @@ class TeamSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "membership_role",
-            "created_by",
             "created_by_name",
             "can_manage",
         ]
@@ -223,6 +221,8 @@ class TeamSerializer(serializers.ModelSerializer):
 
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="public_id", read_only=True)
+
     class Meta:
         model = MessageAttachment
         fields = ["id", "original_name", "file", "uploaded_at"]
@@ -230,6 +230,11 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
 
 
 class IncidentSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source="reference_id", read_only=True)
+    team = serializers.SlugRelatedField(
+        slug_field="public_id",
+        queryset=Team.objects.all(),
+    )
     team_name = serializers.CharField(source="team.name", read_only=True)
     created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True)
     created_by_email = serializers.CharField(source="created_by.email", read_only=True)
@@ -316,13 +321,11 @@ class IncidentSerializer(serializers.ModelSerializer):
             "template_type",
             "distribution_lists",
             "default_extra_recipients",
-            "created_by",
             "created_by_name",
             "created_by_email",
             "created_at",
             "updated_at",
             "closed_at",
-            "closed_by",
             "is_closed",
             "messages_count",
         ]
@@ -330,13 +333,11 @@ class IncidentSerializer(serializers.ModelSerializer):
             "id",
             "reference_id",
             "team_name",
-            "created_by",
             "created_by_name",
             "created_by_email",
             "created_at",
             "updated_at",
             "closed_at",
-            "closed_by",
             "is_closed",
             "messages_count",
         ]
@@ -378,6 +379,11 @@ class IncidentSerializer(serializers.ModelSerializer):
 
 
 class IncidentMessageSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    incident = serializers.SlugRelatedField(
+        slug_field="reference_id",
+        queryset=Incident.objects.all(),
+    )
     incident_reference = serializers.CharField(source="incident.reference_id", read_only=True)
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
     author_name = serializers.CharField(source="author.get_full_name", read_only=True)
@@ -390,7 +396,6 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
             "id",
             "incident",
             "incident_reference",
-            "author",
             "author_name",
             "distribution_lists",
             "subject",
@@ -413,7 +418,6 @@ class IncidentMessageSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "incident_reference",
-            "author",
             "author_name",
             "body_html",
             "sent_to",
@@ -522,7 +526,6 @@ class LoginSerializer(TokenObtainPairSerializer):
         user = self.user
         role = get_user_role(user)
         data["user"] = {
-            "id": user.id,
             "username": user.username,
             "email": user.email,
             "first_name": user.first_name,

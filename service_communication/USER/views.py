@@ -196,7 +196,6 @@ def active_users_dashboard(request):
         "active_user_count": active_users.count(),
         "active_users": [
             {
-                "id": user.id,
                 "email": user.email,
                 "name": user.first_name,
                 "role": get_user_role(user),
@@ -205,7 +204,7 @@ def active_users_dashboard(request):
         ],
         "user_activities": [
             {
-                "user_id": activity.user.id,
+                "name": activity.user.get_full_name() or activity.user.email or "",
                 "email": activity.user.email,
                 "activity_type": activity.activity_type,
                 "timestamp": activity.timestamp.isoformat(),
