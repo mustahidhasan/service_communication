@@ -699,8 +699,11 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
 
   const formatDirectoryEntry = (result) => {
     if (!result) return null;
-    const graphId = (result.graph_id || result.id || '').trim();
-    const email = (result.email || result.mail || '').trim();
+    const graphIdRaw = result.graph_id ?? result.id ?? result.objectId ?? result.groupId ?? '';
+    const emailRaw =
+      result.email ?? result.mail ?? result.address ?? result.value ?? result.mailAddress ?? '';
+    const graphId = String(graphIdRaw || '').trim();
+    const email = String(emailRaw || '').trim();
     if (!graphId || !email) {
       return null;
     }
@@ -717,12 +720,18 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     };
   };
 
+  const getDistributionListId = (item) => {
+    if (!item) return '';
+    if (typeof item === 'string') return item;
+    return item.graph_id || '';
+  };
+
   const addDistributionEntryToForm = useCallback(
     (target, entry) => {
       if (!entry) return;
       const applyUpdate = (prev) => {
         const current = Array.isArray(prev.distributionLists) ? prev.distributionLists : [];
-        if (current.some((item) => item.graph_id === entry.graph_id)) {
+        if (current.some((item) => getDistributionListId(item) === entry.graph_id)) {
           return prev;
         }
         return { ...prev, distributionLists: [...current, entry] };
@@ -742,7 +751,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
       if (!normalized) return;
       const applyUpdate = (prev) => {
         const current = Array.isArray(prev.distributionLists) ? prev.distributionLists : [];
-        const next = current.filter((item) => item.graph_id !== normalized);
+        const next = current.filter((item) => getDistributionListId(item) !== normalized);
         if (next.length === current.length) {
           return prev;
         }
@@ -1813,22 +1822,29 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                 <div className="selected-distribution-lists">
                   {Array.isArray(incidentForm.distributionLists) && incidentForm.distributionLists.length ? (
                     <ul className="directory-results inline">
-                      {incidentForm.distributionLists.map((entry) => (
-                        <li key={entry.graph_id}>
+                    {incidentForm.distributionLists.map((entry) => {
+                      const graphId = getDistributionListId(entry);
+                      const displayName =
+                        (entry && typeof entry === 'object' && entry.display_name) || graphId;
+                      const email =
+                        (entry && typeof entry === 'object' && entry.email) || '';
+                      return (
+                        <li key={graphId || displayName}>
                           <div>
-                            <strong>{entry.display_name}</strong>
+                            <strong>{displayName || 'Distribution list'}</strong>
                             <br />
-                            <small>{entry.email}</small>
+                            <small>{email || graphId}</small>
                           </div>
                           <button
                             type="button"
                             className="secondary"
-                            onClick={() => removeDistributionEntryFromForm('incident', entry.graph_id)}
+                            onClick={() => removeDistributionEntryFromForm('incident', graphId)}
                           >
                             Remove
                           </button>
                         </li>
-                      ))}
+                      );
+                    })}
                     </ul>
                   ) : (
                     <p className="empty-state">No distribution lists selected. Use the search below to add.</p>
@@ -2382,22 +2398,29 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                 {Array.isArray(recipientEditorForm.distributionLists) &&
                 recipientEditorForm.distributionLists.length ? (
                   <ul className="directory-results inline">
-                    {recipientEditorForm.distributionLists.map((entry) => (
-                      <li key={entry.graph_id}>
-                        <div>
-                          <strong>{entry.display_name}</strong>
-                          <br />
-                          <small>{entry.email}</small>
-                        </div>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => removeDistributionEntryFromForm('editor', entry.graph_id)}
-                        >
-                          Remove
-                        </button>
-                      </li>
-                    ))}
+                    {recipientEditorForm.distributionLists.map((entry) => {
+                      const graphId = getDistributionListId(entry);
+                      const displayName =
+                        (entry && typeof entry === 'object' && entry.display_name) || graphId;
+                      const email =
+                        (entry && typeof entry === 'object' && entry.email) || '';
+                      return (
+                        <li key={graphId || displayName}>
+                          <div>
+                            <strong>{displayName || 'Distribution list'}</strong>
+                            <br />
+                            <small>{email || graphId}</small>
+                          </div>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => removeDistributionEntryFromForm('editor', graphId)}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <p className="empty-state">No distribution lists selected.</p>
