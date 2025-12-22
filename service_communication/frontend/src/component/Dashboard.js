@@ -23,15 +23,20 @@ const INCIDENT_STATUS_FILTERS = [
 const DIRECTORY_SEARCH_MIN = 2;
 const DIRECTORY_SEARCH_DEBOUNCE = 350;
 
+// ✅ NEW: persist incident-selected DLs in localStorage
+const DL_STORAGE_KEY = 'scIncidentSelectedDistributionLists';
+
 const readCookie = (name) => {
   if (!document?.cookie) return null;
-  return document.cookie
-    .split(';')
-    .map((cookie) => cookie.trim())
-    .find((cookie) => cookie.startsWith(`${name}=`))
-    ?.split('=')
-    ?.slice(1)
-    ?.join('=') || null;
+  return (
+    document.cookie
+      .split(';')
+      .map((cookie) => cookie.trim())
+      .find((cookie) => cookie.startsWith(`${name}=`))
+      ?.split('=')
+      ?.slice(1)
+      ?.join('=') || null
+  );
 };
 
 const toArray = (payload) => {
@@ -514,6 +519,19 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     }
   }, [legacyBaseUrl, navigate, persistAuth]);
 
+  // ✅ NEW: restore incident-selected DLs from localStorage on first mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(DL_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed) || !parsed.length) return;
+      setIncidentForm((prev) => ({ ...prev, distributionLists: parsed }));
+    } catch (_) {
+      // ignore corrupted storage
+    }
+  }, []);
+
   useEffect(() => {
     if (!token) {
       navigate('/');
@@ -566,6 +584,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
   useEffect(() => {
     setMessageNextDraft(messageForm.nextCommunicationTime || '');
   }, [messageForm.nextCommunicationTime]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -726,16 +745,27 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     return item.graph_id || '';
   };
 
+  // ✅ UPDATED: persist selected incident DLs in localStorage
   const addDistributionEntryToForm = useCallback(
     (target, entry) => {
       if (!entry) return;
+
       const applyUpdate = (prev) => {
         const current = Array.isArray(prev.distributionLists) ? prev.distributionLists : [];
         if (current.some((item) => getDistributionListId(item) === entry.graph_id)) {
           return prev;
         }
-        return { ...prev, distributionLists: [...current, entry] };
+        const next = [...current, entry];
+
+        if (target === 'incident') {
+          try {
+            localStorage.setItem(DL_STORAGE_KEY, JSON.stringify(next));
+          } catch (_) {}
+        }
+
+        return { ...prev, distributionLists: next };
       };
+
       if (target === 'incident') {
         setIncidentForm(applyUpdate);
       } else if (target === 'editor') {
@@ -745,18 +775,25 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     [setIncidentForm, setRecipientEditorForm]
   );
 
+  // ✅ UPDATED: keep localStorage in sync when removing incident DLs
   const removeDistributionEntryFromForm = useCallback(
     (target, graphId) => {
       const normalized = (graphId || '').trim();
       if (!normalized) return;
+
       const applyUpdate = (prev) => {
         const current = Array.isArray(prev.distributionLists) ? prev.distributionLists : [];
         const next = current.filter((item) => getDistributionListId(item) !== normalized);
-        if (next.length === current.length) {
-          return prev;
+
+        if (target === 'incident') {
+          try {
+            localStorage.setItem(DL_STORAGE_KEY, JSON.stringify(next));
+          } catch (_) {}
         }
+
         return { ...prev, distributionLists: next };
       };
+
       if (target === 'incident') {
         setIncidentForm(applyUpdate);
       } else if (target === 'editor') {
@@ -861,17 +898,15 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
 
   const allOpenIncidentsCount = useMemo(
     () =>
-      (incidents || []).filter(
-        (incident) => (incident.status || '').toLowerCase() !== 'closed'
-      ).length,
+      (incidents || []).filter((incident) => (incident.status || '').toLowerCase() !== 'closed')
+        .length,
     [incidents]
   );
 
   const teamOpenIncidentsCount = useMemo(
     () =>
-      filteredIncidents.filter(
-        (incident) => (incident.status || '').toLowerCase() !== 'closed'
-      ).length,
+      filteredIncidents.filter((incident) => (incident.status || '').toLowerCase() !== 'closed')
+        .length,
     [filteredIncidents]
   );
 
@@ -1252,6 +1287,12 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
           default_extra_recipients: parseEmailInput(incidentForm.oneOffRecipients),
         },
       });
+
+      // ✅ NEW: clear stored incident DLs after successful incident creation
+      try {
+        localStorage.removeItem(DL_STORAGE_KEY);
+      } catch (_) {}
+
       setIncidentForm(buildDefaultIncidentForm());
       await loadIncidents();
       await loadSummary();
@@ -1384,9 +1425,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
         headers: {},
       });
 
-      const defaultExtrasAfterSend = Array.isArray(
-        selectedIncidentDetails?.default_extra_recipients
-      )
+      const defaultExtrasAfterSend = Array.isArray(selectedIncidentDetails?.default_extra_recipients)
         ? formatEmailList(selectedIncidentDetails.default_extra_recipients)
         : '';
       setMessageForm(() => ({
@@ -1603,7 +1642,10 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
               </label>
               <div className="template-hints">
                 <h4>Templates</h4>
-                <p>Template library is available directly inside the Email Timeline so you can preview and select wording without leaving the workflow.</p>
+                <p>
+                  Template library is available directly inside the Email Timeline so you can
+                  preview and select wording without leaving the workflow.
+                </p>
               </div>
             </section>
             <section className="tab-panel">
@@ -1758,10 +1800,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                   {REGION_OPTIONS.map((region) => {
                     const isChecked = incidentForm.affectedRegions.includes(region);
                     return (
-                      <label
-                        key={region}
-                        className={`chip-control${isChecked ? ' active' : ''}`}
-                      >
+                      <label key={region} className={`chip-control${isChecked ? ' active' : ''}`}>
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -1804,9 +1843,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                 <span>Templates</span>
                 <select
                   value={incidentForm.templateType}
-                  onChange={(e) =>
-                    setIncidentForm({ ...incidentForm, templateType: e.target.value })
-                  }
+                  onChange={(e) => setIncidentForm({ ...incidentForm, templateType: e.target.value })}
                 >
                   {templateOptions.map((template) => (
                     <option key={template.id} value={template.id}>
@@ -1815,44 +1852,16 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                   ))}
                 </select>
               </label>
+
               <label className="form-field">
                 <div className="field-header">
                   <span>Distribution Lists</span>
                 </div>
-                <div className="selected-distribution-lists">
-                  {Array.isArray(incidentForm.distributionLists) && incidentForm.distributionLists.length ? (
-                    <ul className="directory-results inline">
-                    {incidentForm.distributionLists.map((entry) => {
-                      const graphId = getDistributionListId(entry);
-                      const displayName =
-                        (entry && typeof entry === 'object' && entry.display_name) || graphId;
-                      const email =
-                        (entry && typeof entry === 'object' && entry.email) || '';
-                      return (
-                        <li key={graphId || displayName}>
-                          <div>
-                            <strong>{displayName || 'Distribution list'}</strong>
-                            <br />
-                            <small>{email || graphId}</small>
-                          </div>
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() => removeDistributionEntryFromForm('incident', graphId)}
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      );
-                    })}
-                    </ul>
-                  ) : (
-                    <p className="empty-state">No distribution lists selected. Use the search below to add.</p>
-                  )}
-                </div>
+
                 <small className="form-hint">
                   Lists sync directly from Microsoft Entra ID. Use the search below to add more.
                 </small>
+
                 <div className="directory-inline">
                   <input
                     type="text"
@@ -1862,10 +1871,41 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                       setDirectorySearch((prev) => ({ ...prev, incident: e.target.value }))
                     }
                   />
-                  {directorySearchLoading.incident && (
-                    <small className="form-hint">Searching directory…</small>
+                  {directorySearchLoading.incident && <small className="form-hint">Searching directory…</small>}
+                </div>
+
+                {/* ✅ NEW PLACEMENT: show selected DLs BELOW the search input */}
+                <div className="selected-distribution-lists">
+                  {Array.isArray(incidentForm.distributionLists) && incidentForm.distributionLists.length ? (
+                    <ul className="directory-results inline selected">
+                      {incidentForm.distributionLists.map((entry) => {
+                        const graphId = getDistributionListId(entry);
+                        const displayName =
+                          (entry && typeof entry === 'object' && entry.display_name) || graphId;
+                        const email = (entry && typeof entry === 'object' && entry.email) || '';
+                        return (
+                          <li key={graphId || displayName}>
+                            <div>
+                              <strong>{displayName || 'Distribution list'}</strong>
+                              <br />
+                              <small>{email || graphId}</small>
+                            </div>
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() => removeDistributionEntryFromForm('incident', graphId)}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="empty-state">No distribution lists selected.</p>
                   )}
                 </div>
+
                 {directorySearch.incident.trim().length >= DIRECTORY_SEARCH_MIN && (
                   <ul className="directory-results inline">
                     {directoryResults.incident.length ? (
@@ -1892,6 +1932,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                   </ul>
                 )}
               </label>
+
               <label className="form-field">
                 <span>One-off Recipients</span>
                 <textarea
@@ -1906,6 +1947,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                   Optional recipients saved with the incident and used as defaults for future updates.
                 </small>
               </label>
+
               <button type="submit" className="primary" disabled={loading}>
                 Save Incident
               </button>
@@ -1913,16 +1955,13 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
           </section>
         );
       case 'active':
+        // unchanged (rest of your component continues)
         return (
           <div className="tab-stack">
             <section className="tab-panel">
               <div className="panel-header compact">
                 <h2>All Incidents</h2>
-                <div
-                  className="incident-filter-chips"
-                  role="group"
-                  aria-label="Filter incidents by status"
-                >
+                <div className="incident-filter-chips" role="group" aria-label="Filter incidents by status">
                   {INCIDENT_STATUS_FILTERS.map((filter) => (
                     <button
                       type="button"
@@ -1956,12 +1995,11 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                 </ul>
               ) : (
                 <p className="empty-state">
-                  {selectedTeam
-                    ? 'No incidents match the selected filters.'
-                    : 'Select a team to view incidents.'}
+                  {selectedTeam ? 'No incidents match the selected filters.' : 'Select a team to view incidents.'}
                 </p>
               )}
             </section>
+
             <section className="tab-panel">
               <h2>Incident Workspace</h2>
               {selectedIncidentDetails ? (
@@ -1980,13 +2018,15 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                       <strong>Workaround:</strong> {selectedIncidentDetails.workaround || '—'}
                     </p>
                     <p>
-                      <strong>Affected Regions:</strong> {Array.isArray(selectedIncidentDetails.affected_regions) &&
+                      <strong>Affected Regions:</strong>{' '}
+                      {Array.isArray(selectedIncidentDetails.affected_regions) &&
                       selectedIncidentDetails.affected_regions.length
                         ? selectedIncidentDetails.affected_regions.join(', ')
                         : '—'}
                     </p>
                     <p>
-                      <strong>Next Communication:</strong> {formatDateTime(selectedIncidentDetails.next_communication_time)}
+                      <strong>Next Communication:</strong>{' '}
+                      {formatDateTime(selectedIncidentDetails.next_communication_time)}
                     </p>
                   </div>
                   <div className="incident-action-buttons">
@@ -2018,6 +2058,9 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
         return null;
     }
   };
+
+  // NOTE: The remainder of your component (timeline modal, close modal, recipients modal, header/nav/footer)
+  // stays unchanged from your original code.
 
   const showTimelineModal = activeIncidentModal === 'timeline' && Boolean(selectedIncidentDetails);
   const showCloseModal = activeIncidentModal === 'close' && Boolean(selectedIncidentDetails);
