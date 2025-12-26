@@ -234,3 +234,12 @@ python manage.py migrate
 * Key changes:
   * Removed custom DL entry tables, introduced `EmailTemplate`, incident default recipients, and audit snapshot fields.
   * Distribution list routes are read-only; Graph search/import endpoints handle new entries.
+
+# test distribution list:
+```bash  
+export AZURE_TENANT_ID=...
+export AZURE_CLIENT_ID=...
+export AZURE_CLIENT_SECRET=...
+python communications/scripts/graph_smoke_test.py --query Iris
+
+```

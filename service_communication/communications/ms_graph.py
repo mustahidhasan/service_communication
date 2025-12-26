@@ -51,50 +51,118 @@ def _get_app_token() -> str:
     return access_token
 
 
-def _build_headers() -> Dict[str, str]:
+def _build_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     token = _get_app_token()
-    return {
+    headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+    if extra:
+        headers.update(extra)
+    return headers
 
 
-def fetch_directory_lists(search: Optional[str] = None, limit: int = 30) -> List[Dict]:
+def _mask_client_id(client_id: Optional[str]) -> str:
+    if not client_id:
+        return "unknown"
+    if len(client_id) <= 8:
+        return "***"
+    return f"{client_id[:4]}...{client_id[-4:]}"
+
+
+def _log_graph_request(strategy: str, params: Dict[str, str], response: requests.Response) -> None:
+    logger.info(
+        "Graph group search (%s) tenant=%s client=%s status=%s url=%s params=%s",
+        strategy,
+        settings.AZURE_TENANT_ID,
+        _mask_client_id(settings.AZURE_CLIENT_ID),
+        response.status_code,
+        response.request.url,
+        params,
+    )
+
+
+def fetch_directory_lists(search: Optional[str] = None, limit: int = 20) -> List[Dict]:
     """Fetch Microsoft 365 distribution groups."""
     if not _has_graph_config():
-        return []
+        raise ActiveDirectoryConfigurationError("Azure AD credentials are not configured.")
     params = {
         "$top": limit,
-        "$select": "id,displayName,mail,description,mailNickname",
-        "$filter": "mailEnabled eq true and securityEnabled eq false",
+        "$select": "id,displayName,mail,description,mailNickname,mailEnabled,securityEnabled",
     }
-    if search:
-        sanitized = search.replace("'", "''")
-        params["$filter"] += (
-            f" and (startsWith(displayName,'{sanitized}') "
-            f"or startsWith(mailNickname,'{sanitized}') "
-            f"or startsWith(mail,'{sanitized}'))"
+    if not search:
+        params["$filter"] = "mailEnabled eq true and securityEnabled eq false"
+        response = requests.get(
+            f"{GRAPH_BASE_URL}/groups",
+            headers=_build_headers(),
+            params=params,
+            timeout=15,
         )
-    response = requests.get(
-        f"{GRAPH_BASE_URL}/groups",
-        headers=_build_headers(),
-        params=params,
-        timeout=15,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    return payload.get("value", [])
+        _log_graph_request("filter", params, response)
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("value", [])
+
+    sanitized = search.replace("'", "''")
+    search_query = f"\"displayName:{sanitized}\" OR \"mail:{sanitized}\""
+    search_params = {
+        **params,
+        "$search": search_query,
+        "$count": "true",
+    }
+    try:
+        response = requests.get(
+            f"{GRAPH_BASE_URL}/groups",
+            headers=_build_headers({"ConsistencyLevel": "eventual"}),
+            params=search_params,
+            timeout=15,
+        )
+        _log_graph_request("search", search_params, response)
+        response.raise_for_status()
+        payload = response.json()
+        values = payload.get("value", [])
+        return [
+            group
+            for group in values
+            if group.get("mailEnabled") is True and group.get("securityEnabled") is False
+        ]
+    except requests.exceptions.HTTPError as exc:
+        response = exc.response
+        status_code = response.status_code if response is not None else None
+        if status_code in (400, 404):
+            fallback_params = {
+                **params,
+                "$filter": (
+                    "mailEnabled eq true and securityEnabled eq false and "
+                    f"(startswith(displayName,'{sanitized}') "
+                    f"or startswith(mail,'{sanitized}') "
+                    f"or startswith(mailNickname,'{sanitized}'))"
+                ),
+            }
+            response = requests.get(
+                f"{GRAPH_BASE_URL}/groups",
+                headers=_build_headers(),
+                params=fallback_params,
+                timeout=15,
+            )
+            _log_graph_request("filter-fallback", fallback_params, response)
+            response.raise_for_status()
+            payload = response.json()
+            return payload.get("value", [])
+        raise
 
 
 def fetch_directory_list_by_id(object_id: str) -> Optional[Dict]:
     if not _has_graph_config():
         return None
+    params = {"$select": "id,displayName,mail,description,mailNickname"}
     response = requests.get(
         f"{GRAPH_BASE_URL}/groups/{object_id}",
         headers=_build_headers(),
-        params={"$select": "id,displayName,mail,description,mailNickname"},
+        params=params,
         timeout=15,
     )
+    _log_graph_request("by-id", params, response)
     if response.status_code == 404:
         return None
     response.raise_for_status()
@@ -119,6 +187,7 @@ def fetch_directory_list_by_email(email: str) -> Optional[Dict]:
         params=params,
         timeout=15,
     )
+    _log_graph_request("by-email", params, response)
     response.raise_for_status()
     payload = response.json()
     values = payload.get("value") or []
