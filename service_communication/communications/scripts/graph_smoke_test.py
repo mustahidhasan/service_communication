@@ -13,8 +13,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--query",
-        required=True,
         help="Display name or email prefix to search for.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Fetch the first page of distribution lists without filtering.",
     )
     parser.add_argument(
         "--limit",
@@ -31,12 +35,20 @@ def main() -> int:
 
     from communications.ms_graph import fetch_directory_lists  # noqa: E402
 
-    results = fetch_directory_lists(search=args.query, limit=args.limit)
+    if not args.all and not args.query:
+        parser.error("Either --query or --all is required.")
+
+    search = None if args.all else args.query
+    results = fetch_directory_lists(search=search, limit=args.limit)
     if not results:
-        print("No distribution lists found for query:", args.query)
+        if args.all:
+            print("No distribution lists found.")
+        else:
+            print("No distribution lists found for query:", args.query)
         return 1
 
-    print(f"Found {len(results)} distribution list(s) for '{args.query}':")
+    label = "all" if args.all else f"'{args.query}'"
+    print(f"Found {len(results)} distribution list(s) for {label}:")
     for entry in results:
         name = entry.get("displayName") or entry.get("mailNickname") or entry.get("id")
         mail = entry.get("mail") or "no-mail"

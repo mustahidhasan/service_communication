@@ -237,9 +237,8 @@ python manage.py migrate
 
 # test distribution list:
 ```bash  
-export AZURE_TENANT_ID=...
-export AZURE_CLIENT_ID=...
-export AZURE_CLIENT_SECRET=...
-python communications/scripts/graph_smoke_test.py --query Iris
-
+export AZURE_TENANT_ID=05ceb559-e89f-4e43-a141-34567baa8838    
+export AZURE_CLIENT_ID=2674c689-eca2-4af7-8a21-02a6fccbc04d   
+export AZURE_CLIENT_SECRET=KER8Q~wLpPH~LyHaCKQNuY7cPQ46xSMbVAQ~UdoU 
+python communications/scripts/graph_smoke_test.py --all --limit 10
 ```
