@@ -134,6 +134,16 @@ class DirectoryDistributionListView(APIView):
             response = getattr(exc, "response", None)
             status_code = response.status_code if response is not None else status.HTTP_502_BAD_GATEWAY
             detail = "Microsoft Graph rejected the request."
+            if response is not None:
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = None
+                if isinstance(payload, dict):
+                    graph_error = payload.get("error") or {}
+                    message = graph_error.get("message") or payload.get("detail")
+                    if message:
+                        detail = f"Microsoft Graph error: {message}"
             if status_code in (401, 403):
                 detail = (
                     "Microsoft Graph returned a permission error. "
@@ -150,14 +160,16 @@ class DirectoryDistributionListView(APIView):
             )
         data = []
         for group in groups:
-            email = group.get("mail")
-            if not email:
-                continue
+            email_value = group.get("mail")
+            display_name = group.get("displayName") or group.get("mailNickname") or email_value
             data.append(
                 {
                     "id": group.get("id"),
-                    "name": group.get("displayName") or group.get("mailNickname") or email,
-                    "mail": email,
+                    "graph_id": group.get("id"),
+                    "name": display_name,
+                    "display_name": display_name,
+                    "mail": email_value,
+                    "email": email_value,
                     "description": group.get("description") or group.get("mailNickname") or "",
                 }
             )
