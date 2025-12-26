@@ -87,6 +87,14 @@ function Login({
     if (auth?.access || bootstrapAttemptedRef.current) {
       return;
     }
+    if (typeof sessionStorage !== 'undefined') {
+      const skipSessionLogin = sessionStorage.getItem('scSkipSessionLogin');
+      if (skipSessionLogin === '1') {
+        sessionStorage.removeItem('scSkipSessionLogin');
+        bootstrapAttemptedRef.current = true;
+        return;
+      }
+    }
     bootstrapAttemptedRef.current = true;
     performSessionLogin({ silent: true });
   }, [auth, performSessionLogin]);

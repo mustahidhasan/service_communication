@@ -493,6 +493,9 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     setShowSettingsDropdown(false);
     persistAuth(null);
     try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('scSkipSessionLogin', '1');
+      }
       const headers = {};
       const csrfToken = readCookie('csrftoken');
       if (csrfToken) {
