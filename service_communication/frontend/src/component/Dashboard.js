@@ -1865,7 +1865,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                 <div className="directory-inline">
                   <input
                     type="text"
-                    placeholder="Search Microsoft 365 distribution lists"
+                    placeholder="Search distribution list group name or email eg, service_communication"
                     value={directorySearch.incident}
                     onChange={(e) =>
                       setDirectorySearch((prev) => ({ ...prev, incident: e.target.value }))
