@@ -264,6 +264,7 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
   const refreshPromiseRef = useRef(null);
   const settingsMenuRef = useRef(null);
   const toastTimeoutRef = useRef(null);
+  const closeModalIncidentRef = useRef(null);
   const directorySearchRef = useRef({
     incident: '',
     message: '',
@@ -874,6 +875,42 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     [selectedIncidentDetails]
   );
 
+  const allIncidentListIds = useMemo(
+    () => availableIncidentLists.map((list) => list.graph_id),
+    [availableIncidentLists]
+  );
+
+  const normalizeIncidentListSelection = useCallback(
+    (selectedIds) => {
+      const selectedSet = new Set(selectedIds);
+      return allIncidentListIds.filter((id) => selectedSet.has(id));
+    },
+    [allIncidentListIds]
+  );
+
+  const toggleIncidentListSelection = useCallback(
+    (selectedIds, graphId) => {
+      const next = new Set(selectedIds);
+      if (next.has(graphId)) {
+        next.delete(graphId);
+      } else {
+        next.add(graphId);
+      }
+      return normalizeIncidentListSelection([...next]);
+    },
+    [normalizeIncidentListSelection]
+  );
+
+  const toggleAllIncidentLists = useCallback(
+    (selectedIds) => {
+      if (!allIncidentListIds.length) {
+        return [];
+      }
+      return selectedIds.length === allIncidentListIds.length ? [] : [...allIncidentListIds];
+    },
+    [allIncidentListIds]
+  );
+
   const distributionLookup = useMemo(() => {
     const map = new Map();
     availableIncidentLists.forEach((list) => map.set(list.graph_id, list));
@@ -1211,6 +1248,26 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     setDirectorySearch((prev) => ({ ...prev, editor: '' }));
   }, [activeIncidentModal, selectedIncidentDetails]);
 
+  useEffect(() => {
+    if (activeIncidentModal !== 'close' || !selectedIncidentDetails) {
+      closeModalIncidentRef.current = null;
+      return;
+    }
+    if (closeModalIncidentRef.current === selectedIncidentDetails.id) {
+      return;
+    }
+    closeModalIncidentRef.current = selectedIncidentDetails.id;
+    const incidentDefaults = Array.isArray(selectedIncidentDetails.distribution_lists)
+      ? selectedIncidentDetails.distribution_lists.map((entry) => entry.graph_id)
+      : [];
+    setCloseForm((prev) => ({
+      ...prev,
+      distribution_lists: incidentDefaults,
+      point_of_contact: prev.point_of_contact || getDefaultPointOfContact(auth),
+      point_of_contact_email: prev.point_of_contact_email || getDefaultPointOfContactEmail(auth),
+    }));
+  }, [activeIncidentModal, selectedIncidentDetails, auth]);
+
   const selectedIncidentTeam = selectedIncidentDetails?.team;
 
   useEffect(() => {
@@ -1222,11 +1279,6 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     }
     setSelectedTeam(selectedIncidentTeam);
   }, [forceTeamFromIncident, selectedIncidentTeam, selectedTeam]);
-
-  const handleMessageDistributionChange = (event) => {
-    const values = Array.from(event.target.selectedOptions).map((option) => option.value);
-    setMessageForm({ ...messageForm, distributionLists: values });
-  };
 
   const toggleRegion = (region) => {
     setIncidentForm((prev) => {
@@ -2176,18 +2228,55 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                   Edit recipients
                 </button>
               </div>
-              <select
-                multiple
-                value={messageForm.distributionLists}
-                onChange={handleMessageDistributionChange}
-              >
-                {availableIncidentLists.map((list) => (
-                  <option key={list.graph_id} value={list.graph_id}>
-                    {list.display_name}
-                    {list.email ? ` (${list.email})` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="distribution-selector">
+                <div className="distribution-selector-header">
+                  <label className="distribution-selector-toggle">
+                    <input
+                      type="checkbox"
+                      checked={
+                        allIncidentListIds.length > 0 &&
+                        allIncidentListIds.every((id) => messageForm.distributionLists.includes(id))
+                      }
+                      onChange={() =>
+                        setMessageForm((prev) => ({
+                          ...prev,
+                          distributionLists: toggleAllIncidentLists(prev.distributionLists || []),
+                        }))
+                      }
+                      disabled={!allIncidentListIds.length}
+                    />
+                    Select all
+                  </label>
+                </div>
+                <ul className="distribution-selector-list">
+                  {availableIncidentLists.map((list) => {
+                    const checked = messageForm.distributionLists.includes(list.graph_id);
+                    return (
+                      <li key={list.graph_id}>
+                        <label className="distribution-selector-item">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setMessageForm((prev) => ({
+                                ...prev,
+                                distributionLists: toggleIncidentListSelection(
+                                  prev.distributionLists || [],
+                                  list.graph_id
+                                ),
+                              }))
+                            }
+                          />
+                          <span>
+                            {list.display_name}
+                            {list.email ? ` (${list.email})` : ''}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
               {!availableIncidentLists.length && (
                 <small className="form-hint">
                   No recipients configured. Use Edit recipients to add distribution lists from Microsoft 365.
@@ -2371,23 +2460,61 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
             </label>
             <label className="form-field">
               <span>Distribution Lists</span>
-              <select
-                multiple
-                value={Array.isArray(closeForm.distribution_lists) ? closeForm.distribution_lists : []}
-                onChange={(e) =>
-                  setCloseForm({
-                    ...closeForm,
-                    distribution_lists: Array.from(e.target.selectedOptions).map((option) => option.value),
-                  })
-                }
-              >
-                {availableIncidentLists.map((list) => (
-                  <option key={list.graph_id} value={list.graph_id}>
-                    {list.display_name}
-                    {list.email ? ` (${list.email})` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="distribution-selector">
+                <div className="distribution-selector-header">
+                  <label className="distribution-selector-toggle">
+                    <input
+                      type="checkbox"
+                      checked={
+                        allIncidentListIds.length > 0 &&
+                        allIncidentListIds.every((id) =>
+                          (closeForm.distribution_lists || []).includes(id)
+                        )
+                      }
+                      onChange={() =>
+                        setCloseForm((prev) => ({
+                          ...prev,
+                          distribution_lists: toggleAllIncidentLists(
+                            Array.isArray(prev.distribution_lists) ? prev.distribution_lists : []
+                          ),
+                        }))
+                      }
+                      disabled={!allIncidentListIds.length}
+                    />
+                    Select all
+                  </label>
+                </div>
+                <ul className="distribution-selector-list">
+                  {availableIncidentLists.map((list) => {
+                    const checked = (closeForm.distribution_lists || []).includes(list.graph_id);
+                    return (
+                      <li key={list.graph_id}>
+                        <label className="distribution-selector-item">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setCloseForm((prev) => ({
+                                ...prev,
+                                distribution_lists: toggleIncidentListSelection(
+                                  Array.isArray(prev.distribution_lists)
+                                    ? prev.distribution_lists
+                                    : [],
+                                  list.graph_id
+                                ),
+                              }))
+                            }
+                          />
+                          <span>
+                            {list.display_name}
+                            {list.email ? ` (${list.email})` : ''}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
               <small className="form-hint">
                 Leave empty to use all incident recipients. Select specific lists to limit delivery.
               </small>

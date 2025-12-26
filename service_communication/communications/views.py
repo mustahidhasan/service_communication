@@ -214,7 +214,7 @@ class IncidentViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     @action(detail=True, methods=["post"], url_path="close")
-    def close_incident(self, request, pk=None):
+    def close_incident(self, request, reference_id=None, **kwargs):
         incident = self.get_object()
         serializer = IncidentCloseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
