@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Login from './component/Login';
 import Dashboard from './component/Dashboard';
 import UserActivity from './component/UserActivity';
+import Guide from './component/Guide';
 import OAuthCallback from './component/OAuthCallback';
 import AdminRedirect from './component/AdminRedirect';
 import NetworkOperationsDashboard from './component/NetworkOperationsDashboard';
@@ -79,6 +80,7 @@ function App() {
             />
           }
         />
+        <Route path="/guide" element={<Guide />} />
         {serviceEnabled && (
           <>
             <Route
