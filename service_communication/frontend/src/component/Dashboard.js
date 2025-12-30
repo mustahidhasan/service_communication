@@ -491,7 +491,8 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
 
   const handleLogout = useCallback(async () => {
     setShowSettingsDropdown(false);
-    persistAuth(null);
+    const accessToken = auth?.access;
+    let redirected = false;
     try {
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem('scSkipSessionLogin', '1');
@@ -500,6 +501,9 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
       const csrfToken = readCookie('csrftoken');
       if (csrfToken) {
         headers['X-CSRFToken'] = csrfToken;
+      }
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
       }
       const response = await fetch(`${legacyBaseUrl}/logout/`, {
         method: 'POST',
@@ -513,15 +517,20 @@ function Dashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
         // ignore parse issues
       }
       if (data?.success && data?.logout_url) {
+        redirected = true;
+        persistAuth(null);
         window.location.href = data.logout_url;
         return;
       }
     } catch (err) {
       console.error('Logout failed', err);
     } finally {
-      navigate('/');
+      if (!redirected) {
+        persistAuth(null);
+        navigate('/');
+      }
     }
-  }, [legacyBaseUrl, navigate, persistAuth]);
+  }, [auth?.access, legacyBaseUrl, navigate, persistAuth]);
 
   // ✅ NEW: restore incident-selected DLs from localStorage on first mount
   useEffect(() => {
