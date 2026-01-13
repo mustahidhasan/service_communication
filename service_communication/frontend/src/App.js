@@ -1,12 +1,10 @@
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import Login from './component/Login';
-import Dashboard from './component/Dashboard';
-import UserActivity from './component/UserActivity';
-import Guide from './component/Guide';
 import OAuthCallback from './component/OAuthCallback';
 import AdminRedirect from './component/AdminRedirect';
 import NetworkOperationsDashboard from './component/NetworkOperationsDashboard';
+import AlertIngestionDashboard from './component/AlertIngestionDashboard';
 import { AUTH_STORAGE_KEY } from './constants/storage';
 import './App.css';
 
@@ -17,7 +15,7 @@ const resolveApiBases = () => {
   let rootBase;
   if (provided) {
     rootBase = sanitizeBase(
-      provided.replace(/\/service-communications$/, '').replace(/\/network-operations$/, '')
+      provided.replace(/\/network-operations$/, '').replace(/\/alert-ingestion$/, '')
     );
   } else if (window.location.hostname === 'localhost') {
     rootBase = 'http://localhost:8000/api';
@@ -27,8 +25,8 @@ const resolveApiBases = () => {
   const normalizedRoot = sanitizeBase(rootBase);
   return {
     root: normalizedRoot,
-    service: `${normalizedRoot}/service-communications`,
     network: `${normalizedRoot}/network-operations`,
+    alerts: `${normalizedRoot}/alert-ingestion`,
   };
 };
 
@@ -42,16 +40,16 @@ const resolveLegacyBase = (rootApiBase) => {
 };
 
 function App() {
-  const [{ root: rootApiBaseUrl, service: serviceApiBaseUrl, network: networkApiBaseUrl }] =
+  const [{ root: rootApiBaseUrl, network: networkApiBaseUrl, alerts: alertsApiBaseUrl }] =
     useState(resolveApiBases);
   const legacyBaseUrl = useMemo(() => resolveLegacyBase(rootApiBaseUrl), [rootApiBaseUrl]);
   const [auth, setAuth] = useState(() => {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     return stored ? JSON.parse(stored) : null;
   });
-  const appScope = (process.env.REACT_APP_APP_SCOPE || 'combined').toLowerCase();
-  const serviceEnabled = appScope !== 'network';
-  const networkEnabled = appScope !== 'service';
+  const appScope = (process.env.REACT_APP_APP_SCOPE || 'alerts').toLowerCase();
+  const alertEnabled = appScope === 'combined' || appScope === 'alerts';
+  const networkEnabled = appScope === 'combined' || appScope === 'network';
 
   useEffect(() => {
     if (!auth) {
@@ -59,7 +57,7 @@ function App() {
     }
   }, [auth]);
 
-  const defaultPath = networkEnabled && !serviceEnabled ? '/network-operations' : '/service-communications';
+  const defaultPath = alertEnabled ? '/alert-ingestion' : '/network-operations';
 
   return (
     <Router>
@@ -69,61 +67,17 @@ function App() {
           element={
             <Login
               apiBaseUrl={rootApiBaseUrl}
-              serviceApiBaseUrl={serviceApiBaseUrl}
+              serviceApiBaseUrl={alertsApiBaseUrl}
               auth={auth}
               setAuth={setAuth}
               homePath={defaultPath}
               productTitle={
-                serviceEnabled ? 'Service Communication Portal' : 'Operations Access Gateway'
+                alertEnabled ? 'LogicMonitor Alert Console' : 'Operations Access Gateway'
               }
               metaBaseUrl={rootApiBaseUrl}
             />
           }
         />
-        <Route path="/guide" element={<Guide />} />
-        {serviceEnabled && (
-          <>
-            <Route
-              path="/dashboard"
-              element={
-                <Login
-                  apiBaseUrl={rootApiBaseUrl}
-                  serviceApiBaseUrl={serviceApiBaseUrl}
-                  auth={auth}
-                  setAuth={setAuth}
-                  homePath="/service-communications"
-                  productTitle="Service Communication Portal"
-                  metaBaseUrl={rootApiBaseUrl}
-                />
-              }
-            />
-            <Route
-              path="/service-communications"
-              element={
-                auth ? (
-                  <Dashboard
-                    apiBaseUrl={serviceApiBaseUrl}
-                    metaBaseUrl={rootApiBaseUrl}
-                    auth={auth}
-                    setAuth={setAuth}
-                  />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-            <Route
-              path="/user-activity"
-              element={
-                auth ? (
-                  <UserActivity apiBaseUrl={rootApiBaseUrl} auth={auth} />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-          </>
-        )}
         {networkEnabled && (
           <Route
             path="/network-operations"
@@ -132,6 +86,23 @@ function App() {
                 <NetworkOperationsDashboard
                   apiBaseUrl={networkApiBaseUrl}
                   rootApiBaseUrl={rootApiBaseUrl}
+                  auth={auth}
+                  setAuth={setAuth}
+                />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+        )}
+        {alertEnabled && (
+          <Route
+            path="/alert-ingestion"
+            element={
+              auth ? (
+                <AlertIngestionDashboard
+                  apiBaseUrl={alertsApiBaseUrl}
+                  metaBaseUrl={rootApiBaseUrl}
                   auth={auth}
                   setAuth={setAuth}
                 />

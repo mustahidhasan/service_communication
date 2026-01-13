@@ -1,6 +1,6 @@
 {
-  "short_name": "ServiceComms",
-  "name": "Service Communication Portal",
+  "short_name": "LogicMonitor",
+  "name": "LogicMonitor Alert Console",
   "icons": [
     {
       "src": "logo_left.png",

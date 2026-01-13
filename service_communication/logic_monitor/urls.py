@@ -3,20 +3,20 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-service_communications_patterns = [
-    path("", include("communications.urls")),
-]
-
 network_operations_patterns = [
     path("", include("network_ops.urls")),
+]
+
+alert_ingestion_patterns = [
+    path("", include("alert_ingestion.urls")),
 ]
 
 # Reuse the same app routes under an /api prefix so local dev can hit /api/*
 # just like production behind Nginx.
 api_patterns = [
     path("", include("USER.urls")),
-    path("service-communications/", include(service_communications_patterns)),
     path("network-operations/", include(network_operations_patterns)),
+    path("alert-ingestion/", include(alert_ingestion_patterns)),
 ]
 
 urlpatterns = [

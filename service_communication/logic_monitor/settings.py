@@ -23,8 +23,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "USER",
-    "communications",
     "network_ops",
+    "alert_ingestion",
 ]
 
 # Middleware
@@ -41,7 +41,7 @@ MIDDLEWARE = [
 ]
 
 # URLs and templates
-ROOT_URLCONF = "service_communication.urls"
+ROOT_URLCONF = "logic_monitor.urls"
 
 TEMPLATES = [
     {
@@ -59,7 +59,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "service_communication.wsgi.application"
+WSGI_APPLICATION = "logic_monitor.wsgi.application"
 
 # Database (SQLite for now)
 DATABASES = {
@@ -107,6 +107,16 @@ AZURE_AUTHORITY = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}"
 AZURE_AUTHORIZE_ENDPOINT = f"{AZURE_AUTHORITY}/oauth2/v2.0/authorize"
 AZURE_TOKEN_ENDPOINT = f"{AZURE_AUTHORITY}/oauth2/v2.0/token"
 AZURE_SCOPES = config("REACT_APP_SCOPES", default="openid profile email offline_access User.Read")
+
+# Microsoft Graph (mailbox ingestion)
+GRAPH_API_BASE = config("GRAPH_API_BASE", default="https://graph.microsoft.com/v1.0")
+GRAPH_APP_SCOPE = config("GRAPH_APP_SCOPE", default="https://graph.microsoft.com/.default")
+
+# LogicMonitor integration
+LOGICMONITOR_ACCOUNT = config("LOGICMONITOR_ACCOUNT", default="")
+LOGICMONITOR_ACCESS_ID = config("LOGICMONITOR_ACCESS_ID", default="")
+LOGICMONITOR_ACCESS_KEY = config("LOGICMONITOR_ACCESS_KEY", default="")
+LOGICMONITOR_API_BASE = config("LOGICMONITOR_API_BASE", default="")
 
 # CORS and CSRF
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default=FRONTEND_URL).split(",")

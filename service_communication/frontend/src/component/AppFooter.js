@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 const FOOTER_PREFIX =
   '"This application is continuously evolving, if you have suggestions for improvement? ';
 const FOOTER_SUFFIX = '"';
-const FALLBACK_EMAIL = 'support@service-communication.system';
+const FALLBACK_EMAIL = 'support@logic-monitor.system';
 
 const emailCache = new Map();
 const emailPromiseCache = new Map();
@@ -56,7 +56,7 @@ function AppFooter({ apiBaseUrl, metaBaseUrl }) {
     <footer className="app-footer" aria-label="Application feedback contact">
       <p className="app-footer-text">
         <span>{FOOTER_PREFIX}</span>
-        <a href={mailHref}>Contact Service Communications</a>
+        <a href={mailHref}>Contact LogicMonitor</a>
         <span>{FOOTER_SUFFIX}</span>
       </p>
     </footer>

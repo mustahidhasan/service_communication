@@ -22,8 +22,8 @@ function Login({
   serviceApiBaseUrl = apiBaseUrl,
   auth,
   setAuth,
-  homePath = '/service-communications',
-  productTitle = 'Service Communication Portal',
+  homePath = '/alert-ingestion',
+  productTitle = 'LogicMonitor Alert Console',
   metaBaseUrl,
 }) {
   const navigate = useNavigate();
@@ -80,7 +80,7 @@ function Login({
         }
       }
     },
-    [apiBaseUrl, navigate, setAuth]
+    [navigate, productTitle, serviceApiBaseUrl, setAuth]
   );
 
   useEffect(() => {
@@ -152,9 +152,9 @@ function Login({
       )}
       <div className="login-frame">
         <header className="login-header">
-          <img src="logo_left.png" className="logo-left" alt="Service Communications logo" />
+          <img src="logo_left.png" className="logo-left" alt="LogicMonitor logo" />
           <div className="login-title">{productTitle}</div>
-          <img src="logo_right.png" className="logo-right" alt="Service partner logo" />
+          <img src="logo_right.png" className="logo-right" alt="Partner logo" />
           <button
             type="button"
             className={`insights-trigger ${showInsights ? 'active' : ''}`}
@@ -185,12 +185,12 @@ function Login({
         </header>
         <main className="login-box">
           <h1>Welcome back</h1>
-          <p className="login-subtitle">Securely access incident communications and user activity insights.</p>
+          <p className="login-subtitle">Securely access alert ingestion, normalization, and delivery insights.</p>
           <button type="button" onClick={handleSSOLogin} disabled={loading}>
             {loading ? 'Signing you in…' : 'Login via SSO'}
           </button>
           <small className="login-hint">
-            SSO is required. Reach out to the Service Communication admins if you need access.
+            SSO is required. Reach out to the LogicMonitor admins if you need access.
           </small>
         </main>
       </div>

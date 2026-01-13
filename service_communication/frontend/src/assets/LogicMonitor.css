@@ -1,4 +1,4 @@
-.service-communications {
+.logic-monitor {
   --sc-text: #1c401d;
   --sc-green: #1b6b3a;
   --sc-green-dark: #0f3c1d;
@@ -11,7 +11,7 @@
   font-family: 'Segoe UI', sans-serif;
 }
 
-.service-communications .app-header {
+.logic-monitor .app-header {
   background: var(--sc-surface);
   color: var(--sc-text);
   border-bottom: 1px solid var(--sc-border);
@@ -22,7 +22,7 @@
   padding: 1.25rem 2.5rem;
 }
 
-.service-communications [data-section] {
+.logic-monitor [data-section] {
   scroll-margin-top: 140px;
 }
 
@@ -230,7 +230,7 @@
 }
 
 
-.service-communications .alert {
+.logic-monitor .alert {
   margin: 1.5rem 2rem;
   border: 1px solid #fecdd3;
 }
@@ -244,7 +244,7 @@
   box-shadow: 0 25px 55px rgba(20, 64, 29, 0.08);
 }
 
-.service-communications .summary-grid {
+.logic-monitor .summary-grid {
   padding: 0;
   gap: 1.25rem;
   display: grid;
@@ -305,7 +305,7 @@
   gap: 1rem;
 }
 
-.service-communications button.sc-action {
+.logic-monitor button.sc-action {
   padding: 0.9rem 1.5rem;
   border-radius: 14px;
   border: 1px solid var(--sc-green);
@@ -317,25 +317,25 @@
   box-shadow: 0 10px 25px rgba(27, 107, 58, 0.15);
 }
 
-.service-communications button.sc-action.primary {
+.logic-monitor button.sc-action.primary {
   background: var(--sc-green);
   color: white;
 }
 
-.service-communications button.sc-action:hover {
+.logic-monitor button.sc-action:hover {
   background: var(--sc-green-dark);
   color: white;
   transform: translateY(-2px);
 }
 
-.service-communications .grid {
+.logic-monitor .grid {
   padding: 0 2rem 2rem;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   gap: 1.5rem;
 }
 
-.service-communications .panel {
+.logic-monitor .panel {
   background: var(--sc-surface);
   border: 1px solid var(--sc-border);
   box-shadow: 0 20px 45px rgba(20, 64, 29, 0.07);
@@ -346,7 +346,7 @@
   overflow: hidden;
 }
 
-.service-communications form.sc-form {
+.logic-monitor form.sc-form {
   border: 1px solid var(--sc-border);
   border-radius: 24px;
   padding: 1.75rem;
@@ -359,7 +359,7 @@
   gap: 1.5rem;
 }
 
-.service-communications form.sc-form::before {
+.logic-monitor form.sc-form::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -367,26 +367,26 @@
   pointer-events: none;
 }
 
-.service-communications form.sc-form > * {
+.logic-monitor form.sc-form > * {
   position: relative;
   z-index: 1;
 }
 
-.service-communications .form-actions {
+.logic-monitor .form-actions {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
   align-items: center;
 }
 
-.service-communications .form-actions button + button {
+.logic-monitor .form-actions button + button {
   background: transparent;
   border: 1px dashed var(--sc-border);
   color: var(--sc-green);
 }
 
 @media (max-width: 640px) {
-  .service-communications form.sc-form {
+  .logic-monitor form.sc-form {
     padding: 1.25rem;
   }
 }
@@ -417,7 +417,7 @@
   gap: 1.5rem;
 }
 
-.service-communications .panel-header h2 {
+.logic-monitor .panel-header h2 {
   margin: 0;
   color: var(--sc-green);
 }
@@ -594,9 +594,9 @@
   padding-right: 0.25rem;
 }
 
-.service-communications input,
-.service-communications textarea,
-.service-communications select {
+.logic-monitor input,
+.logic-monitor textarea,
+.logic-monitor select {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #d8eadc;
@@ -609,44 +609,44 @@
   transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.service-communications input:hover,
-.service-communications textarea:hover,
-.service-communications select:hover {
+.logic-monitor input:hover,
+.logic-monitor textarea:hover,
+.logic-monitor select:hover {
   border-color: var(--sc-green);
 }
 
-.service-communications input[type='checkbox'],
-.service-communications input[type='radio'] {
+.logic-monitor input[type='checkbox'],
+.logic-monitor input[type='radio'] {
   accent-color: var(--sc-green);
 }
 
-.service-communications input:focus,
-.service-communications textarea:focus,
-.service-communications select:focus {
+.logic-monitor input:focus,
+.logic-monitor textarea:focus,
+.logic-monitor select:focus {
   outline: none;
   border-color: var(--sc-green);
   box-shadow: 0 0 0 3px rgba(27, 107, 58, 0.1);
   transform: translateY(-1px);
 }
 
-.service-communications textarea {
+.logic-monitor textarea {
   min-height: 140px;
   resize: vertical;
   padding: 1rem 1.15rem;
 }
 
-.service-communications select[multiple] {
+.logic-monitor select[multiple] {
   min-height: 160px;
   padding: 1rem 1.15rem;
 }
 
-.service-communications input[type='file'] {
+.logic-monitor input[type='file'] {
   border-style: dashed;
   cursor: pointer;
   padding: 1rem;
 }
 
-.service-communications input[type='file']::file-selector-button {
+.logic-monitor input[type='file']::file-selector-button {
   border: none;
   border-radius: 999px;
   background: var(--sc-green);
@@ -657,25 +657,25 @@
   font-weight: 600;
 }
 
-.service-communications .form-grid {
+.logic-monitor .form-grid {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
 }
 
-.service-communications .sc-form h3 {
+.logic-monitor .sc-form h3 {
   margin: 0 0 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--sc-green);
 }
 
-.service-communications .form-field,
-.service-communications .checkbox-grid,
-.service-communications .radio-group,
-.service-communications .form-grid > button,
-.service-communications .form-grid > hr,
-.service-communications .form-grid > h3 {
+.logic-monitor .form-field,
+.logic-monitor .checkbox-grid,
+.logic-monitor .radio-group,
+.logic-monitor .form-grid > button,
+.logic-monitor .form-grid > hr,
+.logic-monitor .form-grid > h3 {
   width: 100%;
 }
 
@@ -714,7 +714,7 @@
   box-shadow: 0 6px 16px rgba(27, 107, 58, 0.15);
 }
 
-.service-communications .form-field {
+.logic-monitor .form-field {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
@@ -722,14 +722,14 @@
   color: var(--sc-green-muted);
 }
 
-.service-communications .form-field span {
+.logic-monitor .form-field span {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #516d55;
 }
 
-.service-communications .form-field small {
+.logic-monitor .form-field small {
   font-weight: 400;
   color: #4a684a;
 }
@@ -744,7 +744,7 @@
   font-size: 0.9rem;
 }
 
-.service-communications .checkbox-grid {
+.logic-monitor .checkbox-grid {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -754,20 +754,20 @@
   background: rgba(255, 255, 255, 0.7);
 }
 
-.service-communications .checkbox-grid > label {
+.logic-monitor .checkbox-grid > label {
   font-weight: 700;
   color: var(--sc-green);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.service-communications .checkbox-grid .regions {
+.logic-monitor .checkbox-grid .regions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.service-communications .icon-button {
+.logic-monitor .icon-button {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -778,7 +778,7 @@
   color: var(--sc-text);
 }
 
-.service-communications button:not(.subnav-item):not(.panel-toggle):not(.text-link):not(.filter-chip):not(.date-ok-button) {
+.logic-monitor button:not(.subnav-item):not(.panel-toggle):not(.text-link):not(.filter-chip):not(.date-ok-button) {
   border-radius: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -794,39 +794,39 @@
   box-shadow: 0 12px 20px rgba(27, 107, 58, 0.2);
 }
 
-.service-communications button.primary {
+.logic-monitor button.primary {
   background: var(--sc-green);
   color: white;
 }
 
-.service-communications button.primary:hover:not(:disabled) {
+.logic-monitor button.primary:hover:not(:disabled) {
   background: var(--sc-green-dark);
   transform: translateY(-1px);
 }
 
-.service-communications button.secondary {
+.logic-monitor button.secondary {
   background: transparent;
   color: var(--sc-green);
   border: 1px solid var(--sc-green);
   box-shadow: none;
 }
 
-.service-communications button.secondary:hover:not(:disabled) {
+.logic-monitor button.secondary:hover:not(:disabled) {
   background: rgba(27, 107, 58, 0.08);
 }
 
-.service-communications button.tertiary {
+.logic-monitor button.tertiary {
   background: #fef6e7;
   color: #b35c00;
   border: 1px solid #f2d6a2;
   box-shadow: 0 10px 18px rgba(179, 92, 0, 0.15);
 }
 
-.service-communications button.tertiary:hover:not(:disabled) {
+.logic-monitor button.tertiary:hover:not(:disabled) {
   background: #fbe5c1;
 }
 
-.service-communications button:disabled {
+.logic-monitor button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
@@ -931,7 +931,7 @@
   color: #556e55;
 }
 
-.service-communications .radio-group {
+.logic-monitor .radio-group {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -942,7 +942,7 @@
   background: rgba(255, 255, 255, 0.7);
 }
 
-.service-communications .radio-group.radio-row {
+.logic-monitor .radio-group.radio-row {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: stretch;
@@ -950,20 +950,20 @@
   width: 100%;
 }
 
-.service-communications .radio-group .chip-control {
+.logic-monitor .radio-group .chip-control {
   width: 100%;
   justify-content: flex-start;
   min-width: 0;
 }
 
-.service-communications .radio-group.radio-row .chip-control {
+.logic-monitor .radio-group.radio-row .chip-control {
   flex: 1 1 calc(50% - 0.75rem);
   justify-content: center;
   min-width: 160px;
   max-width: calc(50% - 0.5rem);
 }
 
-.service-communications .radio-group.radio-row .chip-control span {
+.logic-monitor .radio-group.radio-row .chip-control span {
   text-align: center;
   width: 100%;
 }
@@ -1212,7 +1212,7 @@
   margin-bottom: 0.5rem;
 }
 
-.service-communications .form-hint button {
+.logic-monitor .form-hint button {
   color: var(--sc-green);
 }
 
@@ -1488,7 +1488,7 @@
   background: rgba(28, 64, 29, 0.4);
 }
 
-.service-communications .toast {
+.logic-monitor .toast {
   position: fixed;
   bottom: 24px;
   left: 50%;
