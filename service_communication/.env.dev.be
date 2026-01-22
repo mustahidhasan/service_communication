@@ -30,3 +30,13 @@ EMAIL_USE_TLS=True
 EMAIL_HOST_USER=girish.lc.photos2@gmail.com
 EMAIL_HOST_PASSWORD=jhazpenfiuhduvvx
 DEFAULT_FROM_EMAIL=girish.lc.photos2@gmail.com
+
+# SDT ingestion
+MAILBOX_ADDRESS=maintenance@example.com
+EMAIL_INGEST_MODE=poll
+POLL_INTERVAL_SECONDS=300
+ALLOWED_SENDER_DOMAINS=vendor.example.com,alerts.example.com
+LOGICMONITOR_ACCOUNT=your-account
+LOGICMONITOR_ACCESS_ID=your-access-id
+LOGICMONITOR_ACCESS_KEY=your-access-key
+LOGICMONITOR_API_BASE=

@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "USER",
     "network_ops",
     "alert_ingestion",
+    "sdt_automation",
 ]
 
 # Middleware
@@ -111,6 +112,16 @@ AZURE_SCOPES = config("REACT_APP_SCOPES", default="openid profile email offline_
 # Microsoft Graph (mailbox ingestion)
 GRAPH_API_BASE = config("GRAPH_API_BASE", default="https://graph.microsoft.com/v1.0")
 GRAPH_APP_SCOPE = config("GRAPH_APP_SCOPE", default="https://graph.microsoft.com/.default")
+
+# SDT ingestion settings
+EMAIL_INGEST_MODE = config("EMAIL_INGEST_MODE", default="poll")
+POLL_INTERVAL_SECONDS = config("POLL_INTERVAL_SECONDS", default=300, cast=int)
+ALLOWED_SENDER_DOMAINS = [
+    domain.strip()
+    for domain in config("ALLOWED_SENDER_DOMAINS", default="").split(",")
+    if domain.strip()
+]
+MAILBOX_ADDRESS = config("MAILBOX_ADDRESS", default="")
 
 # LogicMonitor integration
 LOGICMONITOR_ACCOUNT = config("LOGICMONITOR_ACCOUNT", default="")

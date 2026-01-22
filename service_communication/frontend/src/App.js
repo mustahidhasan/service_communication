@@ -5,6 +5,7 @@ import OAuthCallback from './component/OAuthCallback';
 import AdminRedirect from './component/AdminRedirect';
 import NetworkOperationsDashboard from './component/NetworkOperationsDashboard';
 import AlertIngestionDashboard from './component/AlertIngestionDashboard';
+import SdtAutomationDashboard from './component/SdtAutomationDashboard';
 import { AUTH_STORAGE_KEY } from './constants/storage';
 import './App.css';
 
@@ -15,7 +16,10 @@ const resolveApiBases = () => {
   let rootBase;
   if (provided) {
     rootBase = sanitizeBase(
-      provided.replace(/\/network-operations$/, '').replace(/\/alert-ingestion$/, '')
+      provided
+        .replace(/\/network-operations$/, '')
+        .replace(/\/alert-ingestion$/, '')
+        .replace(/\/sdt-automation$/, '')
     );
   } else if (window.location.hostname === 'localhost') {
     rootBase = 'http://localhost:8000/api';
@@ -27,6 +31,7 @@ const resolveApiBases = () => {
     root: normalizedRoot,
     network: `${normalizedRoot}/network-operations`,
     alerts: `${normalizedRoot}/alert-ingestion`,
+    sdt: `${normalizedRoot}/sdt-automation`,
   };
 };
 
@@ -40,7 +45,7 @@ const resolveLegacyBase = (rootApiBase) => {
 };
 
 function App() {
-  const [{ root: rootApiBaseUrl, network: networkApiBaseUrl, alerts: alertsApiBaseUrl }] =
+  const [{ root: rootApiBaseUrl, network: networkApiBaseUrl, alerts: alertsApiBaseUrl, sdt: sdtApiBaseUrl }] =
     useState(resolveApiBases);
   const legacyBaseUrl = useMemo(() => resolveLegacyBase(rootApiBaseUrl), [rootApiBaseUrl]);
   const [auth, setAuth] = useState(() => {
@@ -50,6 +55,7 @@ function App() {
   const appScope = (process.env.REACT_APP_APP_SCOPE || 'alerts').toLowerCase();
   const alertEnabled = appScope === 'combined' || appScope === 'alerts';
   const networkEnabled = appScope === 'combined' || appScope === 'network';
+  const sdtEnabled = appScope === 'combined' || appScope === 'sdt';
 
   useEffect(() => {
     if (!auth) {
@@ -57,7 +63,8 @@ function App() {
     }
   }, [auth]);
 
-  const defaultPath = alertEnabled ? '/alert-ingestion' : '/network-operations';
+  const defaultPath = alertEnabled ? '/alert-ingestion' : sdtEnabled ? '/sdt-automation' : '/network-operations';
+  const serviceApiBaseUrl = alertEnabled ? alertsApiBaseUrl : sdtEnabled ? sdtApiBaseUrl : alertsApiBaseUrl;
 
   return (
     <Router>
@@ -67,12 +74,16 @@ function App() {
           element={
             <Login
               apiBaseUrl={rootApiBaseUrl}
-              serviceApiBaseUrl={alertsApiBaseUrl}
+              serviceApiBaseUrl={serviceApiBaseUrl}
               auth={auth}
               setAuth={setAuth}
               homePath={defaultPath}
               productTitle={
-                alertEnabled ? 'LogicMonitor Alert Console' : 'Operations Access Gateway'
+                alertEnabled
+                  ? 'LogicMonitor Alert Console'
+                  : sdtEnabled
+                  ? 'LogicMonitor SDT Automation'
+                  : 'Operations Access Gateway'
               }
               metaBaseUrl={rootApiBaseUrl}
             />
@@ -102,6 +113,23 @@ function App() {
               auth ? (
                 <AlertIngestionDashboard
                   apiBaseUrl={alertsApiBaseUrl}
+                  metaBaseUrl={rootApiBaseUrl}
+                  auth={auth}
+                  setAuth={setAuth}
+                />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+        )}
+        {sdtEnabled && (
+          <Route
+            path="/sdt-automation"
+            element={
+              auth ? (
+                <SdtAutomationDashboard
+                  apiBaseUrl={sdtApiBaseUrl}
                   metaBaseUrl={rootApiBaseUrl}
                   auth={auth}
                   setAuth={setAuth}
