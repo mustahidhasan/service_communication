@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: logic_monitor-backend-dev
+    command: python manage.py runserver 0.0.0.0:8000
+    env_file:
+      - .env.dev.be
+    volumes:
+      - ./:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        ENV_FILE: .env.dev.fe
+    container_name: logic_monitor-frontend-dev
+    env_file:
+      - ./frontend/.env.dev.fe
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:alpine
+    container_name: logic_monitor-redis-dev
+    ports:
+      - "6379:6379"
