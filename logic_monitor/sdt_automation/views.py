@@ -1,4 +1,5 @@
 import logging
+from django.conf import settings
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -211,7 +212,27 @@ class HealthView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        return Response({"status": "ok", "timestamp": timezone.now()})
+        def mask(value, visible=4):
+            if not value:
+                return ""
+            value = str(value)
+            if len(value) <= visible:
+                return "*" * len(value)
+            return f"{'*' * (len(value) - visible)}{value[-visible:]}"
+
+        logicmonitor = {
+            "account": bool(settings.LOGICMONITOR_ACCOUNT),
+            "access_id": mask(settings.LOGICMONITOR_ACCESS_ID),
+            "access_key": mask(settings.LOGICMONITOR_ACCESS_KEY),
+            "api_base": settings.LOGICMONITOR_API_BASE or "",
+        }
+        return Response(
+            {
+                "status": "ok",
+                "timestamp": timezone.now(),
+                "logicmonitor": logicmonitor,
+            }
+        )
 
 
 class GraphWebhookView(APIView):
