@@ -39,4 +39,4 @@ ALLOWED_SENDER_DOMAINS=vendor.example.com,alerts.example.com
 LOGICMONITOR_ACCOUNT=your-account
 LOGICMONITOR_ACCESS_ID=your-access-id
 LOGICMONITOR_ACCESS_KEY=your-access-key
-LOGICMONITOR_API_BASE=
+LOGICMONITOR_API_BASE=https://your-account.logicmonitor.com/santaba/rest
