@@ -128,7 +128,13 @@ class SDTRequest(models.Model):
         FAILED = "failed", "Failed"
         SKIPPED = "skipped", "Skipped"
 
-    email = models.ForeignKey(EmailIngested, on_delete=models.CASCADE, related_name="sdt_requests")
+    email = models.ForeignKey(
+        EmailIngested,
+        on_delete=models.CASCADE,
+        related_name="sdt_requests",
+        null=True,
+        blank=True,
+    )
     correlation_key = models.CharField(max_length=255, unique=True)
     payload = models.JSONField(default=dict, blank=True)
     lm_status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)

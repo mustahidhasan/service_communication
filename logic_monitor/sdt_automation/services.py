@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import re
+from datetime import datetime
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -13,6 +14,12 @@ from .models import EmailIngested, ParseResult, MappingResult, SDTRequest
 from .parsing import parse_email
 
 logger = logging.getLogger(__name__)
+
+TARGET_TYPE_MAP = {
+    "device": ("DeviceSDT", "deviceId"),
+    "device_group": ("DeviceGroupSDT", "deviceGroupId"),
+    "service": ("ServiceSDT", "serviceId"),
+}
 
 
 def _stringify_headers(headers):
@@ -169,7 +176,61 @@ def apply_mapping_rules(message, rules):
     }
 
 
-def _build_sdt_payload(parse_result, mapping_targets, email):
+def normalize_target_type(value):
+    if not value:
+        return "device"
+    normalized = str(value).strip().lower().replace("-", "_")
+    if normalized in ("group", "site", "devicegroup"):
+        return "device_group"
+    return normalized
+
+
+def _datetime_to_epoch_ms(value):
+    if not value:
+        return None
+    if isinstance(value, datetime) and timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.get_default_timezone())
+    return int(value.timestamp() * 1000)
+
+
+def _parse_datetime_value(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        seconds = numeric / 1000 if numeric > 1e11 else numeric
+        return datetime.fromtimestamp(seconds, tz=timezone.utc)
+    value = str(value)
+    if value.isdigit():
+        numeric = float(value)
+        seconds = numeric / 1000 if numeric > 1e11 else numeric
+        return datetime.fromtimestamp(seconds, tz=timezone.utc)
+    parsed = parse_datetime(value)
+    if parsed and timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_default_timezone())
+    return parsed
+
+
+def _build_correlation_key(reference, target_type, target_id, start_ms, end_ms):
+    raw = f"{reference}|{target_type}|{target_id}|{start_ms}|{end_ms}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _extract_error_detail(response_payload):
+    if not response_payload:
+        return ""
+    if isinstance(response_payload, dict):
+        for key in ("errorMessage", "errmsg", "message", "error"):
+            value = response_payload.get(key)
+            if value:
+                return str(value)
+        return json.dumps(response_payload)
+    return str(response_payload)
+
+
+def _build_sdt_comment(parse_result, email, override_comment=None):
+    if override_comment:
+        return override_comment
     start_at = parse_result.start_at
     end_at = parse_result.end_at
     notes = (
@@ -179,58 +240,62 @@ def _build_sdt_payload(parse_result, mapping_targets, email):
     notes = f"{notes}\nWindow: {start_at} -> {end_at} ({parse_result.timezone or 'UTC'})"
     if parse_result.notes:
         notes = f"{notes}\n{parse_result.notes}"
+    return notes
 
+
+def _build_sdt_payload(start_ms, end_ms, comment, target_type, target_id):
+    normalized_type = normalize_target_type(target_type)
+    lm_type, lm_id_field = TARGET_TYPE_MAP.get(normalized_type, TARGET_TYPE_MAP["device"])
     payload = {
-        "startDateTime": int(start_at.timestamp() * 1000),
-        "endDateTime": int(end_at.timestamp() * 1000),
-        "timezone": parse_result.timezone or "UTC",
-        "comment": notes,
-        "sdtType": "oneTime",
+        "type": lm_type,
+        lm_id_field: str(target_id),
+        "startDateTime": start_ms,
+        "endDateTime": end_ms,
+        "comment": comment or "",
+        "sdtType": 1,
     }
-
-    device_ids = []
-    group_ids = []
-    for target in mapping_targets:
-        target_type = (target.get("type") or "device").lower()
-        identifier = target.get("identifier")
-        if not identifier:
-            continue
-        if target_type in ("group", "site", "device_group"):
-            group_ids.append(identifier)
-        else:
-            device_ids.append(identifier)
-
-    if device_ids:
-        payload["deviceIds"] = list(dict.fromkeys(device_ids))
-    if group_ids:
-        payload["deviceGroupIds"] = list(dict.fromkeys(group_ids))
-
     return payload
 
 
-def _build_correlation_key(message_id, parse_result, targets):
-    target_key = "|".join(
-        sorted(
-            f"{target.get('type')}:{target.get('identifier')}" for target in targets if target.get("identifier")
-        )
-    )
-    raw = f"{message_id}|{parse_result.start_at}|{parse_result.end_at}|{target_key}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+def _build_email_sdt_payload(parse_result, target_type, target_id, email):
+    start_at = parse_result.start_at
+    end_at = parse_result.end_at
+    start_ms = _datetime_to_epoch_ms(start_at)
+    end_ms = _datetime_to_epoch_ms(end_at)
+    comment = _build_sdt_comment(parse_result, email)
+    return _build_sdt_payload(start_ms, end_ms, comment, target_type, target_id)
 
 
-def create_sdt_for_email(email, parse_result, mapping_targets):
-    correlation_key = _build_correlation_key(email.provider_message_id, parse_result, mapping_targets)
+def create_sdt_request(
+    correlation_ref,
+    target_type,
+    target_id,
+    start_ms,
+    end_ms,
+    comment,
+    email=None,
+    force=False,
+):
+    correlation_key = _build_correlation_key(correlation_ref, target_type, target_id, start_ms, end_ms)
     existing = SDTRequest.objects.filter(correlation_key=correlation_key).first()
-    if existing and existing.lm_status == SDTRequest.Status.SUCCESS:
+    if existing and existing.lm_status == SDTRequest.Status.SUCCESS and not force:
         return existing, False
 
-    payload = _build_sdt_payload(parse_result, mapping_targets, email)
+    payload = _build_sdt_payload(start_ms, end_ms, comment, target_type, target_id)
+    logger.info(
+        "SDT create attempt ref=%s target_type=%s target_id=%s",
+        correlation_ref,
+        target_type,
+        target_id,
+    )
     if existing:
         request = existing
         request.payload = payload
         request.lm_status = SDTRequest.Status.PENDING
         request.lm_error = ""
-        request.save(update_fields=["payload", "lm_status", "lm_error", "updated_at"])
+        if email and request.email_id != email.id:
+            request.email = email
+        request.save(update_fields=["payload", "lm_status", "lm_error", "email", "updated_at"])
     else:
         request = SDTRequest.objects.create(
             email=email,
@@ -264,7 +329,7 @@ def create_sdt_for_email(email, parse_result, mapping_targets):
             error_detail = str(exc)
 
     if status != SDTRequest.Status.SUCCESS:
-        error_detail = error_detail or response_payload.get("error") or "LogicMonitor SDT request failed"
+        error_detail = error_detail or _extract_error_detail(response_payload) or "LogicMonitor SDT request failed"
 
     request.lm_status = status
     request.lm_error = error_detail
@@ -278,13 +343,125 @@ def create_sdt_for_email(email, parse_result, mapping_targets):
     request.save(update_fields=["lm_status", "lm_error", "payload", "lm_sdt_id", "updated_at"])
 
     logger.info(
-        "SDT request %s status=%s email=%s",
+        "SDT request %s status=%s email=%s target=%s",
         request.id,
         request.lm_status,
-        email.provider_message_id,
+        email.provider_message_id if email else "",
+        target_id,
     )
 
     return request, True
+
+
+def create_sdt_requests_for_email(email, parse_result, mapping_targets, force=False):
+    requests = []
+    correlation_ref = email.internet_message_id or email.provider_message_id
+    start_ms = _datetime_to_epoch_ms(parse_result.start_at)
+    end_ms = _datetime_to_epoch_ms(parse_result.end_at)
+    comment = _build_sdt_comment(parse_result, email)
+
+    for target in mapping_targets:
+        target_type = normalize_target_type(target.get("type"))
+        target_id = target.get("identifier")
+        if not target_id:
+            continue
+        request, _ = create_sdt_request(
+            correlation_ref,
+            target_type,
+            target_id,
+            start_ms,
+            end_ms,
+            comment,
+            email=email,
+            force=force,
+        )
+        requests.append(request)
+    return requests
+
+
+def replay_failed_sdt_for_email(email, mapping_rules, force=False):
+    if not email.parse_result or not email.mapping_result:
+        return reprocess_email(email, mapping_rules)
+
+    parse_result = email.parse_result
+    mapping_result = email.mapping_result
+    targets = mapping_result.targets or []
+    if not targets:
+        return email, parse_result, mapping_result
+
+    correlation_ref = email.internet_message_id or email.provider_message_id
+    start_ms = _datetime_to_epoch_ms(parse_result.start_at)
+    end_ms = _datetime_to_epoch_ms(parse_result.end_at)
+    comment = _build_sdt_comment(parse_result, email)
+    replayed = []
+    current_requests = []
+
+    for target in targets:
+        target_type = normalize_target_type(target.get("type"))
+        target_id = target.get("identifier")
+        if not target_id:
+            continue
+        correlation_key = _build_correlation_key(
+            correlation_ref, target_type, str(target_id), start_ms, end_ms
+        )
+        existing = SDTRequest.objects.filter(correlation_key=correlation_key).first()
+        if existing:
+            if not force and existing.lm_status != SDTRequest.Status.FAILED:
+                continue
+            if force and existing.lm_status == SDTRequest.Status.SUCCESS:
+                continue
+        elif not force:
+            continue
+        request, _ = create_sdt_request(
+            correlation_ref,
+            target_type,
+            target_id,
+            start_ms,
+            end_ms,
+            comment,
+            email=email,
+        )
+        replayed.append(request)
+        current_requests.append(request)
+
+    if not current_requests:
+        current_requests = list(SDTRequest.objects.filter(email=email))
+
+    if current_requests:
+        if all(req.lm_status == SDTRequest.Status.SUCCESS for req in current_requests):
+            email.status = EmailIngested.Status.SDT_CREATED
+            email.status_detail = "SDT created"
+        elif any(req.lm_status == SDTRequest.Status.FAILED for req in current_requests):
+            email.status = EmailIngested.Status.FAILED
+            email.status_detail = "; ".join(
+                error for error in (req.lm_error for req in current_requests) if error
+            ) or "SDT creation failed"
+        email.save(update_fields=["status", "status_detail"])
+
+    return email, parse_result, mapping_result
+
+
+def normalize_sdt_input(payload):
+    target_type = normalize_target_type(payload.get("target_type"))
+    target_id = payload.get("target_id")
+    comment = payload.get("comment")
+    start_at = _parse_datetime_value(payload.get("start_time"))
+    end_at = _parse_datetime_value(payload.get("end_time"))
+    if target_type not in TARGET_TYPE_MAP:
+        raise ValueError("Invalid target_type.")
+    if not target_id or not start_at or not end_at or comment is None or str(comment).strip() == "":
+        raise ValueError("Missing required SDT fields.")
+    if start_at >= end_at:
+        raise ValueError("start_time must be before end_time.")
+    start_ms = _datetime_to_epoch_ms(start_at)
+    end_ms = _datetime_to_epoch_ms(end_at)
+    return {
+        "target_type": target_type,
+        "target_id": str(target_id),
+        "comment": comment,
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+    }
 
 
 def ingest_email_message(mailbox, payload, mapping_rules, force=False):
@@ -294,6 +471,7 @@ def ingest_email_message(mailbox, payload, mapping_rules, force=False):
     sender_domain = extract_sender_domain(message.get("sender"))
     allowlist = (mailbox.allowlist_domains if mailbox else []) or settings.ALLOWED_SENDER_DOMAINS
     allowed = is_domain_allowed(sender_domain, allowlist)
+    logger.info("SDT ingest start message_id=%s sender=%s", message_id, message.get("sender"))
 
     with transaction.atomic():
         email, created = EmailIngested.objects.get_or_create(
@@ -349,6 +527,13 @@ def ingest_email_message(mailbox, payload, mapping_rules, force=False):
                 "extracted_fields": parse_data.get("extracted_fields") or {},
             },
         )
+        logger.info(
+            "SDT parse message_id=%s status=%s start=%s end=%s",
+            email.provider_message_id,
+            parse_result.parse_status,
+            parse_result.start_at,
+            parse_result.end_at,
+        )
 
         mapping_payload = apply_mapping_rules(message, mapping_rules)
         mapping_result, _ = MappingResult.objects.update_or_create(
@@ -358,6 +543,12 @@ def ingest_email_message(mailbox, payload, mapping_rules, force=False):
                 "matched_rules": mapping_payload.get("matched_rules") or [],
                 "mapping_status": mapping_payload.get("mapping_status") or MappingResult.Status.NEEDS_MAPPING,
             },
+        )
+        logger.info(
+            "SDT mapping message_id=%s status=%s targets=%s",
+            email.provider_message_id,
+            mapping_result.mapping_status,
+            len(mapping_result.targets or []),
         )
 
         if not allowed:
@@ -394,13 +585,19 @@ def ingest_email_message(mailbox, payload, mapping_rules, force=False):
         email.status_detail = "Targets resolved"
         email.save(update_fields=["status", "status_detail"])
 
-    sdt_request, created_request = create_sdt_for_email(email, parse_result, mapping_result.targets)
-    if sdt_request.lm_status == SDTRequest.Status.SUCCESS:
+    sdt_requests = create_sdt_requests_for_email(email, parse_result, mapping_result.targets)
+    if not sdt_requests:
+        email.status = EmailIngested.Status.FAILED
+        email.status_detail = "No SDT targets to create."
+    elif all(request.lm_status == SDTRequest.Status.SUCCESS for request in sdt_requests):
         email.status = EmailIngested.Status.SDT_CREATED
         email.status_detail = "SDT created"
     else:
+        failed = [request for request in sdt_requests if request.lm_status == SDTRequest.Status.FAILED]
         email.status = EmailIngested.Status.FAILED
-        email.status_detail = sdt_request.lm_error or "SDT creation failed"
+        email.status_detail = "; ".join(
+            error for error in (req.lm_error for req in failed) if error
+        ) or "SDT creation failed"
     email.save(update_fields=["status", "status_detail"])
 
     logger.info(
@@ -409,7 +606,7 @@ def ingest_email_message(mailbox, payload, mapping_rules, force=False):
         email.status,
         parse_result.parse_status if parse_result else "n/a",
         mapping_result.mapping_status if mapping_result else "n/a",
-        sdt_request.lm_status if sdt_request else "n/a",
+        ",".join({request.lm_status for request in sdt_requests}) if sdt_requests else "n/a",
         int((time.monotonic() - start_clock) * 1000),
     )
 

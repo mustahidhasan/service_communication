@@ -72,3 +72,13 @@ class SdtLoginSerializer(TokenObtainPairSerializer):
             "role_label": UserRole(role).label if role in UserRole.values else role,
         }
         return data
+
+
+class LogicMonitorSdtCreateSerializer(serializers.Serializer):
+    target_type = serializers.ChoiceField(choices=["device", "device_group", "service"])
+    target_id = serializers.CharField()
+    start_time = serializers.CharField()
+    end_time = serializers.CharField()
+    comment = serializers.CharField()
+    email_message_id = serializers.CharField(required=False, allow_blank=True)
+    external_ref = serializers.CharField(required=False, allow_blank=True)

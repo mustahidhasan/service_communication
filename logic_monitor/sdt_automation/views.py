@@ -17,12 +17,16 @@ from .serializers import (
     EmailIngestedDetailSerializer,
     SDTRequestSerializer,
     SdtLoginSerializer,
+    LogicMonitorSdtCreateSerializer,
 )
 from .services import (
     ingest_email_message,
     normalize_graph_message,
     reprocess_email,
-    create_sdt_for_email,
+    replay_failed_sdt_for_email,
+    create_sdt_request,
+    create_sdt_requests_for_email,
+    normalize_sdt_input,
     apply_mapping_rules,
 )
 from .parsing import parse_email
@@ -89,8 +93,9 @@ class EmailIngestedViewSet(viewsets.ReadOnlyModelViewSet):
     def replay(self, request, pk=None):
         email = self.get_object()
         mapping_rules = MappingRule.objects.filter(is_active=True)
-        reprocess_email(email, mapping_rules)
-        return Response({"status": "reprocessed"})
+        force = bool((request.data or {}).get("force"))
+        replay_failed_sdt_for_email(email, mapping_rules, force=force)
+        return Response({"status": "replayed", "force": force})
 
     @action(detail=True, methods=["post"], url_path="ignore")
     def ignore(self, request, pk=None):
@@ -130,13 +135,16 @@ class EmailIngestedViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         if normalized_targets and email.parse_result and email.parse_result.start_at:
-            sdt_request, _ = create_sdt_for_email(email, email.parse_result, mapping_result.targets)
-            if sdt_request.lm_status == SDTRequest.Status.SUCCESS:
+            sdt_requests = create_sdt_requests_for_email(email, email.parse_result, mapping_result.targets)
+            if sdt_requests and all(request.lm_status == SDTRequest.Status.SUCCESS for request in sdt_requests):
                 email.status = EmailIngested.Status.SDT_CREATED
                 email.status_detail = "SDT created from manual mapping"
             else:
+                failed = [request for request in sdt_requests if request.lm_status == SDTRequest.Status.FAILED]
                 email.status = EmailIngested.Status.FAILED
-                email.status_detail = sdt_request.lm_error or "SDT creation failed"
+                email.status_detail = "; ".join(
+                    error for error in (req.lm_error for req in failed) if error
+                ) or "SDT creation failed"
             email.save(update_fields=["status", "status_detail"])
         else:
             email.status = EmailIngested.Status.NEEDS_MAPPING
@@ -160,6 +168,19 @@ class EmailIngestedViewSet(viewsets.ReadOnlyModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class EmailReplayView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk=None):
+        email = EmailIngested.objects.filter(pk=pk).first()
+        if not email:
+            return Response({"detail": "Email not found"}, status=status.HTTP_404_NOT_FOUND)
+        mapping_rules = MappingRule.objects.filter(is_active=True)
+        force = bool((request.data or {}).get("force"))
+        replay_failed_sdt_for_email(email, mapping_rules, force=force)
+        return Response({"status": "replayed", "force": force})
 
 
 class SDTRequestViewSet(viewsets.ReadOnlyModelViewSet):
@@ -206,6 +227,42 @@ class ParserTestView(APIView):
             "sender": sender,
         }
         return Response(preview)
+
+
+class LogicMonitorSdtCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = LogicMonitorSdtCreateSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        try:
+            normalized = normalize_sdt_input(serializer.validated_data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        correlation_ref = (
+            serializer.validated_data.get("email_message_id")
+            or serializer.validated_data.get("external_ref")
+            or "manual"
+        )
+        sdt_request, attempted = create_sdt_request(
+            correlation_ref=correlation_ref,
+            target_type=normalized["target_type"],
+            target_id=normalized["target_id"],
+            start_ms=normalized["start_ms"],
+            end_ms=normalized["end_ms"],
+            comment=normalized["comment"],
+            email=None,
+        )
+        return Response(
+            {
+                "status": sdt_request.lm_status,
+                "request_id": sdt_request.id,
+                "lm_sdt_id": sdt_request.lm_sdt_id,
+                "already_created": not attempted and sdt_request.lm_status == SDTRequest.Status.SUCCESS,
+                "error": sdt_request.lm_error,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class HealthView(APIView):

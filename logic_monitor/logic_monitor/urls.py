@@ -3,6 +3,8 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from sdt_automation.views import EmailReplayView
+
 network_operations_patterns = [
     path("", include("network_ops.urls")),
 ]
@@ -22,6 +24,8 @@ api_patterns = [
     path("network-operations/", include(network_operations_patterns)),
     path("alert-ingestion/", include(alert_ingestion_patterns)),
     path("sdt-automation/", include(sdt_automation_patterns)),
+    path("logicmonitor/", include("sdt_automation.logicmonitor_urls")),
+    path("emails/<int:pk>/replay/", EmailReplayView.as_view(), name="email-replay"),
 ]
 
 urlpatterns = [
