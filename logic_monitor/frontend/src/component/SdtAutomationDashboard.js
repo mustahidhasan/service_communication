@@ -7,19 +7,16 @@ import '../assets/LogicMonitor.css';
 const SUB_NAV_SECTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'mailboxes', label: 'Mailboxes' },
-  { id: 'rules', label: 'Rules' },
+  { id: 'rules', label: 'Mapping Rules' },
   { id: 'emails', label: 'Emails' },
-  { id: 'sdt', label: 'SDT Requests' },
+  { id: 'sdt', label: 'SDT Activity' },
 ];
 
 const STATUS_FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'needs_mapping', label: 'Needs mapping' },
   { id: 'failed', label: 'Failed' },
-  { id: 'sdt_created', label: 'SDT created' },
-  { id: 'mapped', label: 'Mapped' },
-  { id: 'ingested', label: 'Ingested' },
-  { id: 'ignored', label: 'Ignored' },
+  { id: 'sdt_created', label: 'Success' },
 ];
 
 const SDT_FILTERS = [
@@ -57,6 +54,18 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
+const normalizeTargetType = (value) => {
+  if (!value) return 'device';
+  const normalized = value.toLowerCase();
+  if (['device_group', 'group', 'site', 'devicegroup'].includes(normalized)) {
+    return 'device_group';
+  }
+  if (normalized === 'service') {
+    return 'service';
+  }
+  return 'device';
+};
+
 const buildMailboxForm = (mailbox) => ({
   name: mailbox?.name || '',
   address: mailbox?.address || '',
@@ -75,7 +84,7 @@ const buildRuleForm = (rule) => ({
   subject_contains: rule?.subject_contains || '',
   body_regex: rule?.body_regex || '',
   keyword_list: Array.isArray(rule?.keyword_list) ? rule.keyword_list.join(', ') : '',
-  target_type: rule?.target_type || 'device',
+  target_type: normalizeTargetType(rule?.target_type),
   target_identifiers: Array.isArray(rule?.target_identifiers)
     ? rule.target_identifiers.join(', ')
     : '',
@@ -84,7 +93,7 @@ const buildRuleForm = (rule) => ({
 });
 
 const buildManualMappingForm = (mappingResult) => ({
-  target_type: mappingResult?.targets?.[0]?.type || 'device',
+  target_type: normalizeTargetType(mappingResult?.targets?.[0]?.type),
   targets: Array.isArray(mappingResult?.targets)
     ? mappingResult.targets.map((entry) => entry.identifier).join(', ')
     : '',
@@ -135,6 +144,10 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
 
   const token = auth?.access;
   const apiBase = useMemo(() => normalizeBase(apiBaseUrl), [apiBaseUrl]);
+  const rootApiBase = useMemo(
+    () => normalizeBase(metaBaseUrl || apiBaseUrl),
+    [metaBaseUrl, apiBaseUrl]
+  );
   const legacyBaseUrl = useMemo(() => {
     if (!apiBase) return '';
     try {
@@ -242,6 +255,30 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
     [apiBase, token]
   );
 
+  const fetchWithRootBase = useCallback(
+    (path, options = {}, forcedToken) => {
+      const opts = { ...options };
+      const headers = { ...(opts.headers || {}) };
+      const requestToken = forcedToken || token;
+      const shouldSerializeBody = opts.body && !(opts.body instanceof FormData);
+      if (!opts.body || shouldSerializeBody) {
+        headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+      }
+      if (requestToken) {
+        headers.Authorization = `Bearer ${requestToken}`;
+      }
+      opts.headers = headers;
+      if (shouldSerializeBody && typeof opts.body !== 'string') {
+        opts.body = JSON.stringify(opts.body);
+      }
+      return fetch(`${rootApiBase}${path}`, {
+        credentials: 'include',
+        ...opts,
+      });
+    },
+    [rootApiBase, token]
+  );
+
   const refreshAccessToken = useCallback(async () => {
     if (!auth?.refresh) {
       return null;
@@ -328,6 +365,40 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
       }
     },
     [auth?.refresh, fetchWithToken, handleSessionExpired, refreshAccessToken]
+  );
+
+  const rootApiRequest = useCallback(
+    async (path, options = {}) => {
+      const response = await fetchWithRootBase(path, options);
+      if (response.status === 204) {
+        return null;
+      }
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (err) {
+        // ignore json parse issues for empty bodies
+      }
+      if (!response.ok) {
+        const detail =
+          data?.detail ||
+          data?.message ||
+          (data && typeof data === 'object'
+            ? JSON.stringify(data)
+            : typeof data === 'string'
+            ? data
+            : 'Request failed');
+        const error = new Error(detail);
+        error.status = response.status;
+        error.responseData = data;
+        if (error.status === 401) {
+          handleSessionExpired();
+        }
+        throw error;
+      }
+      return data;
+    },
+    [fetchWithRootBase, handleSessionExpired]
   );
 
   const loadData = useCallback(async () => {
@@ -637,7 +708,7 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
       setLoading(true);
       setError('');
       try {
-        await apiRequest(`/emails/${email.id}/replay/`, { method: 'POST' });
+        await rootApiRequest(`/emails/${email.id}/replay/`, { method: 'POST' });
         showToast('Replay queued');
         await loadData();
       } catch (err) {
@@ -646,7 +717,7 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
         setLoading(false);
       }
     },
-    [apiRequest, loadData, showToast]
+    [loadData, rootApiRequest, showToast]
   );
 
   const handleIgnore = useCallback(
@@ -979,7 +1050,7 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
         {activeSubNav === 'sdt' && (
           <section className="panel" data-section="sdt">
             <div className="panel-header compact">
-              <h2>SDT requests</h2>
+              <h2>SDT activity</h2>
               <div className="incident-filter-chips">
                 {SDT_FILTERS.map((filter) => (
                   <button
@@ -1000,7 +1071,7 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                     <div className="list-item-header">
                       <div>
                         <strong>SDT {entry.lm_status}</strong>
-                        <p>Email ID: {entry.email}</p>
+                        <p>Email ID: {entry.email || '—'}</p>
                         <small>
                           Created: {formatDateTime(entry.created_at)} · SDT ID: {entry.lm_sdt_id || '—'}
                         </small>
@@ -1175,8 +1246,8 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                     onChange={(event) => setRuleForm((prev) => ({ ...prev, target_type: event.target.value }))}
                   >
                     <option value="device">Device</option>
-                    <option value="group">Group</option>
-                    <option value="site">Site</option>
+                    <option value="device_group">Device group</option>
+                    <option value="service">Service</option>
                   </select>
                 </label>
                 <label className="form-field">
@@ -1250,24 +1321,67 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                 ) : null}
                 <p>Status: {emailDetail.status}</p>
                 {emailDetail.status_detail && <p>Status detail: {emailDetail.status_detail}</p>}
-                {emailDetail.parse_result && (
-                  <div className="template-preview" style={{ marginTop: '1rem' }}>
-                    <div className="template-preview-section">
-                      <span>Parsed</span>
-                      <pre>{JSON.stringify(emailDetail.parse_result, null, 2)}</pre>
-                    </div>
-                    <div className="template-preview-section">
-                      <span>Mapping</span>
-                      <pre>{JSON.stringify(emailDetail.mapping_result, null, 2)}</pre>
-                    </div>
-                    {emailDetail.sdt_requests?.length ? (
-                      <div className="template-preview-section">
-                        <span>SDT Requests</span>
-                        <pre>{JSON.stringify(emailDetail.sdt_requests, null, 2)}</pre>
-                      </div>
-                    ) : null}
+                <div className="template-preview" style={{ marginTop: '1rem' }}>
+                  <div className="template-preview-section">
+                    <span>Parsed window</span>
+                    <pre>
+                      {JSON.stringify(
+                        {
+                          start_at: emailDetail.parse_result?.start_at,
+                          end_at: emailDetail.parse_result?.end_at,
+                          timezone: emailDetail.parse_result?.timezone,
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
                   </div>
-                )}
+                  <div className="template-preview-section">
+                    <span>Mapping targets</span>
+                    <pre>
+                      {JSON.stringify(
+                        {
+                          targets: emailDetail.mapping_result?.targets,
+                          matched_rules: emailDetail.mapping_result?.matched_rules,
+                          mapping_status: emailDetail.mapping_result?.mapping_status,
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </div>
+                  <div className="template-preview-section">
+                    <span>SDT status</span>
+                    <pre>
+                      {JSON.stringify(
+                        (emailDetail.sdt_requests || []).map((entry) => ({
+                          status: entry.lm_status,
+                          lm_sdt_id: entry.lm_sdt_id,
+                          error: entry.lm_error,
+                        })),
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </div>
+                  <div className="template-preview-section">
+                    <span>Raw email</span>
+                    <pre>
+                      {JSON.stringify(
+                        {
+                          subject: emailDetail.subject,
+                          sender: emailDetail.sender,
+                          recipients: emailDetail.recipients,
+                          body_text: emailDetail.body_text,
+                          body_html: emailDetail.body_html,
+                          headers: emailDetail.headers,
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </div>
+                </div>
                 <div className="incident-action-buttons">
                   <button type="button" className="primary" onClick={() => handleReplay(emailDetail)}>
                     Replay
@@ -1305,8 +1419,8 @@ function SdtAutomationDashboard({ apiBaseUrl, metaBaseUrl, auth, setAuth }) {
                     }
                   >
                     <option value="device">Device</option>
-                    <option value="group">Group</option>
-                    <option value="site">Site</option>
+                    <option value="device_group">Device group</option>
+                    <option value="service">Service</option>
                   </select>
                 </label>
                 <label className="form-field">
