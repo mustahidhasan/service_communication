@@ -80,7 +80,7 @@ function Login({
         }
       }
     },
-    [navigate, productTitle, serviceApiBaseUrl, setAuth]
+    [homePath, navigate, productTitle, serviceApiBaseUrl, setAuth]
   );
 
   useEffect(() => {
@@ -120,10 +120,6 @@ function Login({
       setLoading(false);
       alert(error.message || 'Login failed.');
     }
-  };
-
-  const handleEnterWorkspace = () => {
-    performSessionLogin();
   };
 
   const toggleInsights = () => setShowInsights((prev) => !prev);
