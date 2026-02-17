@@ -148,3 +148,66 @@ class SDTRequest(models.Model):
 
     def __str__(self):
         return f"{self.email_id} {self.lm_status}"
+
+
+class SiteCodeMapping(models.Model):
+    vendor_site_code = models.CharField(max_length=120, unique=True, db_index=True)
+    lm_site_code = models.CharField(max_length=120, db_index=True)
+    notes = models.TextField(blank=True)
+    source = models.CharField(max_length=120, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["vendor_site_code"]
+
+    def __str__(self):
+        return f"{self.vendor_site_code} -> {self.lm_site_code}"
+
+
+class SDTQueueItem(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACTIVE = "active", "Active"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class CircuitType(models.TextChoices):
+        UNKNOWN = "unknown", "Unknown"
+        SINGLE = "single", "Single"
+        DUAL = "dual", "Dual"
+
+    class TargetType(models.TextChoices):
+        SITE = "site", "Site"
+        DEVICE = "device", "Device"
+
+    maintenance_id = models.CharField(max_length=255, unique=True)
+    vendor_site_code = models.CharField(max_length=120, db_index=True)
+    lm_site_code = models.CharField(max_length=120, blank=True, null=True, db_index=True)
+    start_time_utc = models.DateTimeField(db_index=True)
+    end_time_utc = models.DateTimeField(db_index=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    circuit_type = models.CharField(max_length=20, choices=CircuitType.choices, default=CircuitType.UNKNOWN)
+    target_type = models.CharField(max_length=20, choices=TargetType.choices, default=TargetType.SITE)
+    target_ids = models.JSONField(default=list, blank=True)
+    lm_sdt_ids = models.JSONField(default=list, blank=True)
+    verification_status = models.CharField(max_length=40, blank=True)
+    verification_details = models.JSONField(default=dict, blank=True)
+    parsed_payload = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True)
+    retry_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["start_time_utc", "-created_at"]
+        indexes = [
+            models.Index(fields=["maintenance_id"], name="sdtq_maint_idx"),
+            models.Index(fields=["status"], name="sdtq_status_idx"),
+            models.Index(fields=["start_time_utc"], name="sdtq_start_idx"),
+            models.Index(fields=["end_time_utc"], name="sdtq_end_idx"),
+            models.Index(fields=["vendor_site_code"], name="sdtq_vendor_idx"),
+            models.Index(fields=["lm_site_code"], name="sdtq_lm_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.maintenance_id} [{self.status}]"

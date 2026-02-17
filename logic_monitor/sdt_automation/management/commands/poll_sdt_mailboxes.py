@@ -6,7 +6,7 @@ from django.conf import settings
 
 from sdt_automation.models import MailboxConfig, MappingRule
 from sdt_automation.ms_graph import fetch_messages, GraphConfigurationError
-from sdt_automation.services import normalize_graph_message, ingest_email_message
+from sdt_automation.services import normalize_graph_message, ingest_email_message, process_queue_tick
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class Command(BaseCommand):
         run_once = options.get("once")
         while True:
             self.poll_mailboxes()
+            process_queue_tick()
             if run_once:
                 break
             self.stdout.write(self.style.NOTICE(f"Sleeping {interval} seconds"))

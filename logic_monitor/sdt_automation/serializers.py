@@ -10,6 +10,8 @@ from .models import (
     MappingRule,
     MappingResult,
     SDTRequest,
+    SDTQueueItem,
+    SiteCodeMapping,
 )
 
 
@@ -82,3 +84,15 @@ class LogicMonitorSdtCreateSerializer(serializers.Serializer):
     comment = serializers.CharField()
     email_message_id = serializers.CharField(required=False, allow_blank=True)
     external_ref = serializers.CharField(required=False, allow_blank=True)
+
+
+class SDTQueueItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SDTQueueItem
+        fields = "__all__"
+
+
+class SiteCodeMappingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SiteCodeMapping
+        fields = "__all__"

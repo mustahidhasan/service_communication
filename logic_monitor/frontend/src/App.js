@@ -82,7 +82,7 @@ function App() {
                 alertEnabled
                   ? 'LogicMonitor Alert Console'
                   : sdtEnabled
-                  ? 'LogicMonitor SDT Automation'
+                  ? 'Logic Monitor SDT'
                   : 'Operations Access Gateway'
               }
               metaBaseUrl={rootApiBaseUrl}

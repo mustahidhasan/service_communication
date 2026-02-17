@@ -115,7 +115,7 @@ GRAPH_APP_SCOPE = config("GRAPH_APP_SCOPE", default="https://graph.microsoft.com
 
 # SDT ingestion settings
 EMAIL_INGEST_MODE = config("EMAIL_INGEST_MODE", default="poll")
-POLL_INTERVAL_SECONDS = config("POLL_INTERVAL_SECONDS", default=300, cast=int)
+POLL_INTERVAL_SECONDS = config("POLL_INTERVAL_SECONDS", default=60, cast=int)
 ALLOWED_SENDER_DOMAINS = [
     domain.strip()
     for domain in config("ALLOWED_SENDER_DOMAINS", default="").split(",")
@@ -127,7 +127,17 @@ MAILBOX_ADDRESS = config("MAILBOX_ADDRESS", default="")
 LOGICMONITOR_ACCOUNT = config("LOGICMONITOR_ACCOUNT", default="")
 LOGICMONITOR_ACCESS_ID = config("LOGICMONITOR_ACCESS_ID", default="")
 LOGICMONITOR_ACCESS_KEY = config("LOGICMONITOR_ACCESS_KEY", default="")
-LOGICMONITOR_API_BASE = config("LOGICMONITOR_API_BASE", default="")
+LOGICMONITOR_API_BASE = config(
+    "LOGICMONITOR_API_BASE",
+    default=f"https://{LOGICMONITOR_ACCOUNT}.logicmonitor.com/santaba/rest"
+    if LOGICMONITOR_ACCOUNT
+    else "",
+)
+SDT_OPS_NOTIFICATION_EMAILS = [
+    email.strip()
+    for email in config("SDT_OPS_NOTIFICATION_EMAILS", default="").split(",")
+    if email.strip()
+]
 
 # CORS and CSRF
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default=FRONTEND_URL).split(",")
@@ -167,3 +177,54 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
 }
+
+
+def _mask(value):
+    if not value:
+        return "<missing>"
+    text = str(value)
+    if len(text) <= 4:
+        return "*" * len(text)
+    return f"{'*' * (len(text) - 4)}{text[-4:]}"
+
+
+def _validate_sdt_runtime_config():
+    errors = []
+    if EMAIL_INGEST_MODE not in {"poll", "webhook"}:
+        errors.append("EMAIL_INGEST_MODE must be one of: poll, webhook")
+    if POLL_INTERVAL_SECONDS < 60:
+        errors.append("POLL_INTERVAL_SECONDS must be >= 60")
+
+    required = {
+        "MAILBOX_ADDRESS": MAILBOX_ADDRESS,
+        "ALLOWED_SENDER_DOMAINS": ",".join(ALLOWED_SENDER_DOMAINS),
+        "LOGICMONITOR_ACCOUNT": LOGICMONITOR_ACCOUNT,
+        "LOGICMONITOR_ACCESS_ID": LOGICMONITOR_ACCESS_ID,
+        "LOGICMONITOR_ACCESS_KEY": LOGICMONITOR_ACCESS_KEY,
+    }
+    for key, value in required.items():
+        if not value:
+            errors.append(f"{key} is required")
+
+    if LOGICMONITOR_ACCOUNT and not LOGICMONITOR_API_BASE:
+        errors.append("LOGICMONITOR_API_BASE could not be derived from LOGICMONITOR_ACCOUNT")
+
+    if errors:
+        masked = {
+            "MAILBOX_ADDRESS": MAILBOX_ADDRESS or "<missing>",
+            "EMAIL_INGEST_MODE": EMAIL_INGEST_MODE,
+            "POLL_INTERVAL_SECONDS": POLL_INTERVAL_SECONDS,
+            "ALLOWED_SENDER_DOMAINS": ALLOWED_SENDER_DOMAINS,
+            "LOGICMONITOR_ACCOUNT": LOGICMONITOR_ACCOUNT or "<missing>",
+            "LOGICMONITOR_ACCESS_ID": _mask(LOGICMONITOR_ACCESS_ID),
+            "LOGICMONITOR_ACCESS_KEY": _mask(LOGICMONITOR_ACCESS_KEY),
+            "LOGICMONITOR_API_BASE": LOGICMONITOR_API_BASE or "<missing>",
+        }
+        raise RuntimeError(
+            "Invalid SDT automation configuration: "
+            + "; ".join(errors)
+            + f". Effective masked config={masked}"
+        )
+
+
+_validate_sdt_runtime_config()

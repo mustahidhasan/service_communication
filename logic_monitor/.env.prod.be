@@ -31,9 +31,10 @@ DEFAULT_FROM_EMAIL=girish.lc.photos2@gmail.com
 # SDT ingestion
 MAILBOX_ADDRESS=maintenance@example.com
 EMAIL_INGEST_MODE=poll
-POLL_INTERVAL_SECONDS=300
+POLL_INTERVAL_SECONDS=60
 ALLOWED_SENDER_DOMAINS=vendor.example.com,alerts.example.com
 LOGICMONITOR_ACCOUNT=your-account
 LOGICMONITOR_ACCESS_ID=your-access-id
 LOGICMONITOR_ACCESS_KEY=your-access-key
-LOGICMONITOR_API_BASE=
+LOGICMONITOR_API_BASE=https://your-account.logicmonitor.com/santaba/rest
+SDT_OPS_NOTIFICATION_EMAILS=ops@example.com

@@ -35,12 +35,53 @@ class LogicMonitorClient:
     def _serialize_payload(self, payload):
         return json.dumps(payload or {}, separators=(",", ":"), sort_keys=True)
 
-    def request(self, http_verb, resource_path, payload=None):
-        data = self._serialize_payload(payload)
+    def request(self, http_verb, resource_path, payload=None, params=None):
+        data = self._serialize_payload(payload) if payload is not None else ""
         headers = self._headers(http_verb, resource_path, data)
         url = f"{self.api_base}{resource_path}"
-        response = requests.request(http_verb, url, headers=headers, data=data, timeout=20)
+        response = requests.request(
+            http_verb,
+            url,
+            headers=headers,
+            params=params,
+            data=data if payload is not None else None,
+            timeout=20,
+        )
         return response
 
     def create_sdt(self, payload):
         return self.request("POST", "/sdt/sdts", payload)
+
+    def end_sdt(self, sdt_id):
+        return self.request("DELETE", f"/sdt/sdts/{sdt_id}")
+
+    def get_sdt(self, sdt_id):
+        return self.request("GET", f"/sdt/sdts/{sdt_id}")
+
+    def list_devices_for_site(self, lm_site_code):
+        query_variants = [
+            {"filter": f"displayName~\"{lm_site_code}\"", "size": 1000},
+            {"filter": f"name~\"{lm_site_code}\"", "size": 1000},
+            {"size": 1000},
+        ]
+        for params in query_variants:
+            response = self.request("GET", "/device/devices", params=params)
+            if not response.ok:
+                continue
+            try:
+                payload = response.json()
+            except ValueError:
+                continue
+            items = payload.get("data", {}).get("items") or payload.get("items") or []
+            if params.get("filter") and items:
+                return items
+            if not params.get("filter"):
+                scoped = [
+                    item
+                    for item in items
+                    if lm_site_code.lower() in str(item.get("displayName", "")).lower()
+                    or lm_site_code.lower() in str(item.get("name", "")).lower()
+                ]
+                if scoped:
+                    return scoped
+        return []

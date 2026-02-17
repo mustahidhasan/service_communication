@@ -1,36 +1,47 @@
 import logging
+
 from django.conf import settings
+from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .models import MailboxConfig, MappingRule, EmailIngested, SDTRequest, MappingResult
+from .models import (
+    EmailIngested,
+    MailboxConfig,
+    MappingRule,
+    SDTQueueItem,
+    SDTRequest,
+    SiteCodeMapping,
+)
+from .ms_graph import GraphConfigurationError, fetch_message, fetch_messages
+from .parsing import parse_email
 from .serializers import (
+    EmailIngestedDetailSerializer,
+    EmailIngestedSerializer,
+    LogicMonitorSdtCreateSerializer,
     MailboxConfigSerializer,
     MappingRuleSerializer,
-    EmailIngestedSerializer,
-    EmailIngestedDetailSerializer,
+    SDTQueueItemSerializer,
     SDTRequestSerializer,
     SdtLoginSerializer,
-    LogicMonitorSdtCreateSerializer,
+    SiteCodeMappingSerializer,
 )
 from .services import (
+    apply_mapping_rules,
+    cancel_queue_item,
+    create_sdt_request,
     ingest_email_message,
     normalize_graph_message,
-    reprocess_email,
-    replay_failed_sdt_for_email,
-    create_sdt_request,
-    create_sdt_requests_for_email,
     normalize_sdt_input,
-    apply_mapping_rules,
+    process_queue_tick,
+    replay_queue_item,
 )
-from .parsing import parse_email
-from .ms_graph import fetch_message, fetch_messages, GraphConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +85,78 @@ class MappingRuleViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 
+class SiteCodeMappingViewSet(viewsets.ModelViewSet):
+    queryset = SiteCodeMapping.objects.all().order_by("vendor_site_code")
+    serializer_class = SiteCodeMappingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class SDTQueueViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = SDTQueueItem.objects.all().order_by("-created_at")
+    serializer_class = SDTQueueItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        status_param = (self.request.query_params.get("status") or "").strip().lower()
+        search = (self.request.query_params.get("search") or "").strip()
+        if status_param and status_param != "all":
+            queryset = queryset.filter(status=status_param)
+        if search:
+            queryset = queryset.filter(
+                Q(maintenance_id__icontains=search)
+                | Q(vendor_site_code__icontains=search)
+                | Q(lm_site_code__icontains=search)
+            )
+        return queryset.order_by("-created_at")
+
+    @action(detail=True, methods=["post"], url_path="replay")
+    def replay(self, request, pk=None):
+        item = self.get_object()
+        lm_mapped = bool(item.lm_site_code and str(item.lm_site_code).strip())
+        allowed_pending = item.status == SDTQueueItem.Status.PENDING and lm_mapped
+        allowed_active = item.status == SDTQueueItem.Status.ACTIVE and bool((item.last_error or "").strip())
+        if not (allowed_pending or allowed_active):
+            return Response(
+                {"detail": "Replay allowed only for Pending+mapped or Active items with errors."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        replay_queue_item(item)
+        return Response({"status": "replayed", "id": item.id})
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        item = self.get_object()
+        cancel_queue_item(item, reason="manual cancel")
+        return Response({"status": "cancelled", "id": item.id})
+
+
+class SDTQueueOverviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        statuses = [choice[0] for choice in SDTQueueItem.Status.choices]
+        counts = {status_name: SDTQueueItem.objects.filter(status=status_name).count() for status_name in statuses}
+        mapping_missing = SDTQueueItem.objects.filter(lm_site_code__isnull=True).count() + SDTQueueItem.objects.filter(
+            lm_site_code=""
+        ).count()
+        return Response(
+            {
+                "counts": counts,
+                "mapping_missing": mapping_missing,
+                "mapping_guidance": "Site code mapping is updated monthly. Keep mappings current before activation.",
+            }
+        )
+
+
+class SchedulerTickView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        result = process_queue_tick()
+        return Response(result)
+
+
 class EmailIngestedViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -88,70 +171,6 @@ class EmailIngestedViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == "retrieve":
             return EmailIngestedDetailSerializer
         return EmailIngestedSerializer
-
-    @action(detail=True, methods=["post"], url_path="replay")
-    def replay(self, request, pk=None):
-        email = self.get_object()
-        mapping_rules = MappingRule.objects.filter(is_active=True)
-        force = bool((request.data or {}).get("force"))
-        replay_failed_sdt_for_email(email, mapping_rules, force=force)
-        return Response({"status": "replayed", "force": force})
-
-    @action(detail=True, methods=["post"], url_path="ignore")
-    def ignore(self, request, pk=None):
-        email = self.get_object()
-        email.status = EmailIngested.Status.IGNORED
-        email.status_detail = "Marked ignored by admin"
-        email.save(update_fields=["status", "status_detail"])
-        return Response({"status": "ignored"})
-
-    @action(detail=True, methods=["patch"], url_path="mapping")
-    def update_mapping(self, request, pk=None):
-        email = self.get_object()
-        payload = request.data or {}
-        targets = payload.get("targets") or []
-        target_type = payload.get("target_type") or "device"
-        normalized_targets = []
-        if isinstance(targets, str):
-            targets = [entry.strip() for entry in targets.split(",") if entry.strip()]
-        for entry in targets:
-            if isinstance(entry, dict):
-                identifier = entry.get("identifier")
-                entry_type = entry.get("type") or target_type
-            else:
-                identifier = str(entry)
-                entry_type = target_type
-            if identifier:
-                normalized_targets.append({"identifier": identifier, "type": entry_type})
-
-        mapping_result, _ = MappingResult.objects.update_or_create(
-            email=email,
-            defaults={
-                "targets": normalized_targets,
-                "matched_rules": [{"id": "manual", "name": "Manual mapping"}],
-                "mapping_status": MappingResult.Status.MAPPED if normalized_targets else MappingResult.Status.NEEDS_MAPPING,
-                "mapping_error": "",
-            },
-        )
-
-        if normalized_targets and email.parse_result and email.parse_result.start_at:
-            sdt_requests = create_sdt_requests_for_email(email, email.parse_result, mapping_result.targets)
-            if sdt_requests and all(request.lm_status == SDTRequest.Status.SUCCESS for request in sdt_requests):
-                email.status = EmailIngested.Status.SDT_CREATED
-                email.status_detail = "SDT created from manual mapping"
-            else:
-                failed = [request for request in sdt_requests if request.lm_status == SDTRequest.Status.FAILED]
-                email.status = EmailIngested.Status.FAILED
-                email.status_detail = "; ".join(
-                    error for error in (req.lm_error for req in failed) if error
-                ) or "SDT creation failed"
-            email.save(update_fields=["status", "status_detail"])
-        else:
-            email.status = EmailIngested.Status.NEEDS_MAPPING
-            email.status_detail = "Target mapping required"
-            email.save(update_fields=["status", "status_detail"])
-
-        return Response({"status": "updated"})
 
     @action(detail=False, methods=["post"], url_path="ingest")
     def ingest(self, request):
@@ -177,10 +196,12 @@ class EmailReplayView(APIView):
         email = EmailIngested.objects.filter(pk=pk).first()
         if not email:
             return Response({"detail": "Email not found"}, status=status.HTTP_404_NOT_FOUND)
-        mapping_rules = MappingRule.objects.filter(is_active=True)
-        force = bool((request.data or {}).get("force"))
-        replay_failed_sdt_for_email(email, mapping_rules, force=force)
-        return Response({"status": "replayed", "force": force})
+        if hasattr(email, "parse_result"):
+            maintenance_id = (email.parse_result.extracted_fields or {}).get("maintenance_id") or ""
+            item = SDTQueueItem.objects.filter(maintenance_id=maintenance_id).first()
+            if item:
+                replay_queue_item(item)
+        return Response({"status": "replayed"})
 
 
 class SDTRequestViewSet(viewsets.ReadOnlyModelViewSet):
@@ -217,13 +238,15 @@ class ParserTestView(APIView):
                 "end_at": parse_data.get("end_at"),
                 "timezone": parse_data.get("timezone"),
                 "notes": parse_data.get("notes"),
+                "maintenance_id": (parse_data.get("extracted_fields") or {}).get("maintenance_id"),
+                "vendor_site_code": (parse_data.get("extracted_fields") or {}).get("vendor_site_code"),
+                "is_cancellation": (parse_data.get("extracted_fields") or {}).get("is_cancellation"),
             },
             "mapped": {
                 "targets": targets,
                 "matched_rules": mapping_payload.get("matched_rules") or [],
                 "mapping_status": mapping_payload.get("mapping_status"),
             },
-            "would_create_sdt": bool(parse_data.get("start_at") and parse_data.get("end_at") and targets),
             "sender": sender,
         }
         return Response(preview)
@@ -282,6 +305,9 @@ class HealthView(APIView):
             "access_id": mask(settings.LOGICMONITOR_ACCESS_ID),
             "access_key": mask(settings.LOGICMONITOR_ACCESS_KEY),
             "api_base": settings.LOGICMONITOR_API_BASE or "",
+            "ingest_mode": settings.EMAIL_INGEST_MODE,
+            "poll_interval_seconds": settings.POLL_INTERVAL_SECONDS,
+            "mailbox_address": settings.MAILBOX_ADDRESS,
         }
         return Response(
             {

@@ -41,6 +41,24 @@ DATE_FORMATS = [
     "%d %B %Y %H:%M",
 ]
 
+MAINTENANCE_PATTERNS = [
+    r"\bmaintenance[\s_-]*id\s*[:#-]?\s*([A-Z0-9._-]{4,})",
+    r"\bmaint[\s_-]*id\s*[:#-]?\s*([A-Z0-9._-]{4,})",
+    r"\b(?:ticket|change|work[\s_-]*order)\s*[:#-]?\s*([A-Z0-9._-]{4,})",
+]
+
+VENDOR_SITE_PATTERNS = [
+    r"\bvendor[\s_-]*site[\s_-]*code\s*[:#-]?\s*([A-Z0-9._-]{2,})",
+    r"\bsite[\s_-]*code\s*[:#-]?\s*([A-Z0-9._-]{2,})",
+    r"\bsite\s*[:#-]\s*([A-Z0-9._-]{2,})",
+]
+
+CANCELLATION_PATTERNS = [
+    r"\bcancel(?:led|ed|lation)?\b",
+    r"\bmaintenance\s+withdrawn\b",
+    r"\bno\s+longer\s+required\b",
+]
+
 
 def _strip_html(value):
     if not value:
@@ -178,6 +196,22 @@ def _parse_backup_window(text, fallback_tz):
     return start_dt, end_dt, tz
 
 
+def _extract_first_match(text, patterns):
+    if not text:
+        return ""
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return (match.group(1) or "").strip()
+    return ""
+
+
+def _is_cancellation_intent(text):
+    if not text:
+        return False
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in CANCELLATION_PATTERNS)
+
+
 def parse_email(subject, body_text, body_html, default_timezone=None):
     merged_text = "\n".join(filter(None, [subject or "", body_text or "", _strip_html(body_html or "")]))
     fallback_tz = default_timezone or dj_timezone.get_default_timezone()
@@ -198,6 +232,13 @@ def parse_email(subject, body_text, body_html, default_timezone=None):
 
     notes = " ".join(part for part in [backup_note] if part).strip()
 
+    maintenance_id = _extract_first_match(merged_text, MAINTENANCE_PATTERNS)
+    vendor_site_code = _extract_first_match(merged_text, VENDOR_SITE_PATTERNS)
+    cancellation_intent = _is_cancellation_intent(merged_text)
+
+    start_utc = start_at.astimezone(timezone.utc).isoformat() if start_at else ""
+    end_utc = end_at.astimezone(timezone.utc).isoformat() if end_at else ""
+
     return {
         "title": (subject or "").strip()[:255],
         "summary": (body_text or _strip_html(body_html or "")).strip()[:500],
@@ -213,5 +254,10 @@ def parse_email(subject, body_text, body_html, default_timezone=None):
             "end_raw": end_at.isoformat() if end_at else "",
             "backup_start_raw": backup_start_at.isoformat() if backup_start_at else "",
             "backup_end_raw": backup_end_at.isoformat() if backup_end_at else "",
+            "maintenance_id": maintenance_id,
+            "vendor_site_code": vendor_site_code,
+            "is_cancellation": cancellation_intent,
+            "start_time_utc": start_utc,
+            "end_time_utc": end_utc,
         },
     }
