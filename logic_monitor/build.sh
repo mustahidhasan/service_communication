@@ -22,7 +22,7 @@ if [ "$ENV" = "prod" ]; then
   echo "Building Production Environment..."
   ENV_FILE_BE=".env.prod.be"
   ENV_FILE_FE=".env.prod.fe"
-  HOST_IP="54.81.160.198"
+  HOST_IP="18.206.173.77"
   COMPOSE_FILE="docker-compose.prod.yml"
   CERT_TARGET_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/certs"
   CERT_TARGET_CRT="$CERT_TARGET_DIR/server.crt"
